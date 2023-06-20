@@ -498,7 +498,7 @@ int8_t current_layer=-1;    // current model layer id, -1 is for non layer tenso
 void ggml_set_current_layer_id(int8_t layer) {
     current_layer = layer;
 }
-uint8_t ggml_get_current_layer_id(void) {
+int8_t ggml_get_current_layer_id(void) {
     return current_layer;
 }
 
