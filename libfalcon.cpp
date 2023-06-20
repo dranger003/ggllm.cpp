@@ -728,6 +728,25 @@ struct llama_model_loader {
             tensor = ggml_new_tensor_1d(ggml_ctx, lt.type, lt.ne.at(0));
         }
         ggml_set_name(tensor, lt.name.c_str());
+        if (lt.name.find("transformer.h.") == 0) {
+            size_t dot_pos = lt.name.find('.', 16);
+            if (dot_pos != std::string::npos) {
+                // tensor->meta.layer_id = std::stoi(lt.name.substr(7, dot_pos - 7)) + 1; // we use layer start at 1 not 0
+            }
+            std::string short_name = lt.name.substr(dot_pos + 1);
+            std::string::size_type weight_pos = short_name.find(".weight");
+            std::string::size_type bias_pos = short_name.find(".bias");
+
+            if (weight_pos != std::string::npos) {
+                short_name.replace(weight_pos, 7, ".w");
+            }
+            if (bias_pos != std::string::npos) {
+                short_name.replace(bias_pos, 5, ".b");
+            }
+            strncpy(tensor->meta.short_name, short_name.c_str(), GGML_MAX_NAME);
+            tensor->meta.short_name[GGML_MAX_NAME] = 0;
+        } 
+            
         // printf("falcon.cpp: creating tensor %s\n", lt.name.c_str());
         LLAMA_ASSERT(lt.ggml_tensor == NULL ); // if this fails, we called get_tensor twice on the same tensor
 
@@ -1270,6 +1289,7 @@ if (n_gpu_layers > 0)
 
         model.layers.resize(n_layer);
         for (uint32_t i = 0; i < n_layer; ++i) {
+            ggml_set_current_layer_id(i);
             const ggml_backend backend = (int(i) < i_gpu_start || int(i) > i_gpu_last) ? GGML_BACKEND_CPU : LLAMA_BACKEND_OFFLOAD; // NOLINT
             const ggml_backend backend_split = (int(i) < i_gpu_start || int(i) > i_gpu_last) ? GGML_BACKEND_CPU : LLAMA_BACKEND_OFFLOAD_SPLIT; // NOLINT
 
@@ -1507,6 +1527,7 @@ static bool falcon_eval_internal(
 #endif // GGML_USE_CUBLAS
 
     for (int il = 0; il < n_layer; ++il) {
+        ggml_set_current_layer_id(il);
         offload_func_t offload_func = llama_nop;
 
 #ifdef GGML_USE_CUBLAS
@@ -1706,7 +1727,7 @@ static bool falcon_eval_internal(
         // input for next layer
         inpL = cur;
     } // end of layer loop
-
+    ggml_set_current_layer_id(-1);
     lctx.use_buf(ctx0, 0);
     //ggml_cuda_set_scratch(0);
 
@@ -1796,10 +1817,10 @@ static bool falcon_eval_internal(
         ggml_graph_export(&gf, cgraph_fname);
     }
 
-#ifdef GGML_PERF
+#if defined(GGML_PERF) && TRUE
     // print timing information per ggml operation (for debugging purposes)
     // requires GGML_PERF to be defined
-    ggml_graph_print(&gf);
+    ggml_graph_print_impl(&gf,true,false,GGML_OP_NONE); // GGML_OP_MUL_MAT
 #endif
 
     // plot the computation graph in dot format (for debugging purposes)

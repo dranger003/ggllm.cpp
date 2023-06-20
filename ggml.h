@@ -375,6 +375,20 @@ extern "C" {
 
     static const size_t GGML_OBJECT_SIZE = sizeof(struct ggml_object);
 
+        typedef struct
+        {
+                // keep it divisible by 16 bytes
+                int8_t layer_id;                 // -1 = global, 0 = first layer
+                char short_name[GGML_MAX_NAME];  // shorter parameter weight name without layer name - used for debugging visualization only
+                int8_t info_op_on_device;        // -2 = not computed, -1 = on CPU, 0+ = on GPU device #
+                // int8_t flag_use_blas_cuda;    // flag to control if CUDA/GPU computation is permitted, forced or disabled for the tensor
+                // int8_t cuda_caching_priority;    // -1 no caching, 0 = default, 1+ = priority | to temporarily cache CUDA buffers that are not offloaded
+        } tensor_meta;
+        static const tensor_meta GGML_DEFAULT_TENSOR_META = {
+                /*.layer_id =*/ -1,
+                /*.short_name =*/ "",
+                /*.info_op_on_device =*/ -2,
+        };
     // n-dimensional tensor
     struct ggml_tensor {
         enum ggml_type    type;
@@ -409,7 +423,9 @@ extern "C" {
 
         char name[GGML_MAX_NAME];
 
-        void * extra; // extra things e.g. for ggml-cuda.cu
+
+        void * extra; // extra things (populated in ggml-cuda.cu, so it's cuBLAS only)
+        tensor_meta meta; // structured generic meta data - increase in chunks of 16 bytes only
 
         char padding[4];
     };
@@ -577,6 +593,9 @@ extern "C" {
 
     GGML_API const char * ggml_get_name(const struct ggml_tensor * tensor);
     GGML_API void         ggml_set_name(struct ggml_tensor * tensor, const char * name);
+    
+    int8_t ggml_get_current_layer_id(void);
+    void ggml_set_current_layer_id(int8_t layer_id);
 
     //
     // operations on tensors with backpropagation
@@ -1113,8 +1132,9 @@ extern "C" {
     GGML_API void               ggml_graph_export(const struct ggml_cgraph * cgraph, const char * fname);
     GGML_API struct ggml_cgraph ggml_graph_import(const char * fname, struct ggml_context ** ctx_data, struct ggml_context ** ctx_eval);
 
-    // print info and performance information for the graph
-    GGML_API void ggml_graph_print(const struct ggml_cgraph * cgraph);
+    // print info and performance information for the graph (graph, print_nodes, print_leafs, limit to operation or NULL)
+    GGML_API void ggml_graph_print_impl(const struct ggml_cgraph * cgraph,bool print_nodes, bool print_leafs, enum ggml_op filter_operation);
+    GGML_API void ggml_graph_print(const struct ggml_cgraph * cgraph); // wrapper of ggml_graph_print_impl()
 
     // dump the graph into a file using the dot format
     GGML_API void ggml_graph_dump_dot(const struct ggml_cgraph * gb, const struct ggml_cgraph * gf, const char * filename);

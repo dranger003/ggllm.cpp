@@ -494,6 +494,14 @@ int64_t ggml_cycles_per_ms(void) {
 #endif
 
 static const size_t CACHE_LINE_SIZE_F32 = CACHE_LINE_SIZE/sizeof(float);
+int8_t current_layer=-1;    // current model layer id, -1 is for non layer tensors (global)
+void ggml_set_current_layer_id(int8_t layer) {
+    current_layer = layer;
+}
+uint8_t ggml_get_current_layer_id(void) {
+    return current_layer;
+}
+
 
 //
 // quantization
@@ -4321,11 +4329,13 @@ struct ggml_tensor * ggml_new_tensor_impl(
         /*.data         =*/ (data == NULL && !ctx->no_alloc) ? (void *)(result + 1) : data,
         /*.name         =*/ { 0 },
         /*.extra        =*/ NULL,
+        /*.meta         =*/ GGML_DEFAULT_TENSOR_META,
         /*.pad          =*/ { 0 },
     };
 
     // TODO: this should not be needed as long as we don't rely on aligned SIMD loads
     //ggml_assert_aligned(result->data);
+    result->meta.layer_id = current_layer;
 
     for (int i = 0; i < n_dims; i++) {
         result->ne[i] = ne[i];
@@ -4680,6 +4690,7 @@ const char * ggml_get_name(const struct ggml_tensor * tensor) {
 void ggml_set_name(struct ggml_tensor * tensor, const char * name) {
     strncpy(tensor->name, name, sizeof(tensor->name));
     tensor->name[sizeof(tensor->name) - 1] = '\0';
+    strcpy(tensor->meta.short_name, tensor->name);
 }
 
 struct ggml_tensor * ggml_view_tensor(
@@ -17018,39 +17029,84 @@ struct ggml_cgraph ggml_graph_import(const char * fname, struct ggml_context ** 
 
     return result;
 }
+// A function that calculates the mean and standard deviation of an array
+void graph_calculate_mean_sd(float array[], int n, float *mean, float *sd)
+{
+    int i;
+    float sum = 0.0;
+    float variance = 0.0;
 
+    for (i = 0; i < n; i++)
+        sum += array[i];
+    *mean = sum / n;
+    for (i = 0; i < n; i++)
+        variance += pow(array[i] - *mean, 2);
+    variance /= n;
+    *sd = sqrt(variance);
+}
 void ggml_graph_print(const struct ggml_cgraph * cgraph) {
+    ggml_graph_print_impl(cgraph, true, true, GGML_OP_NONE);
+}
+// graph, print_nodes, print_leads, optional filter (or NONE)
+void ggml_graph_print_impl(const struct ggml_cgraph * cgraph, bool print_nodes, bool print_leafs, enum ggml_op filter_operation) {
     int64_t perf_total_per_op_us[GGML_OP_COUNT] = {0};
+
 
     GGML_PRINT("=== GRAPH ===\n");
 
     GGML_PRINT_DEBUG("n_threads       = %d\n",        cgraph->n_threads);
     GGML_PRINT_DEBUG("total work size = %zu bytes\n", cgraph->work_size);
 
+    float * perf_array = malloc(cgraph->n_nodes * sizeof(float));
     GGML_PRINT("n_nodes = %d\n", cgraph->n_nodes);
     for (int i = 0; i < cgraph->n_nodes; i++) {
         struct ggml_tensor * node = cgraph->nodes[i];
 
         perf_total_per_op_us[node->op] += MAX(1, node->perf_time_us);
+        perf_array[i] = node->perf_time_us / node->perf_runs;
+    }
+    // Calculate the mean and standard deviation of the node performance array
+    float perf_mean;
+    float perf_sd;
+    graph_calculate_mean_sd(perf_array, cgraph->n_nodes, &perf_mean, &perf_sd);
 
-        GGML_PRINT(" - %3d: [ %5" PRId64 ", %5" PRId64 ", %5" PRId64 "] %16s %s (%3d) cpu = %7.3f / %7.3f ms, wall = %7.3f / %7.3f ms\n",
+     if (print_nodes)
+       printf(" - %3s: [%6s,%6s,%4s]x[%6s,%6s,%4s]=[%6s,%6s,%4s] %16s %2s (%3s) cpu = %7s / %7s ms, wall = %7s / %7s ms [%s %4s] %5s %7s\n",
+       "Idx", "S00","S01","S02","S10","S11","S12","D0", "D1", "D2", "Op_Label", "Gx", "Runs", "Cycles", "Avg_Cyc", "Time", "Avg_Time", "Layer", "Name", "Device", "Impact");
+
+
+    for (int i = 0; i < cgraph->n_nodes; i++) {
+        struct ggml_tensor * node = cgraph->nodes[i];
+        if ((filter_operation != GGML_OP_NONE && filter_operation != GGML_OP_COUNT)  && node->op != filter_operation) continue;
+        
+        char *c_perf_impact = (perf_array[i] > perf_mean + perf_sd) ? "(Slow)" : ((perf_array[i] < perf_mean - perf_sd) ? "(Fast)" : "");
+
+        // the printed dimensions are not necessarily correct, needs an improvement
+        if (print_nodes)
+        GGML_PRINT(" - %3d: [%6" PRId64 ",%6" PRId64 ",%4" PRId64 "]x[%6" PRId64 ",%6" PRId64 ",%4" PRId64 "]=[%6" PRId64 ",%6" PRId64 ",%4" PRId64 "] %16s %s (%3d) cpu = %7.3f / %7.3f ms, wall = %7.3f / %7.3f ms [%3u %s] %5s %7s\n",
                 i,
+                node->src0->ne[0], node->src0->ne[1], node->src0->ne[2],
+                node->src1?node->src1->ne[0]:'/', node->src1?node->src1->ne[1]:'/', node->src1?node->src1->ne[2]:'/',
                 node->ne[0], node->ne[1], node->ne[2],
                 GGML_OP_NAME[node->op], node->is_param ? "x" : node->grad ? "g" : " ", node->perf_runs,
                 (double) node->perf_cycles  / (double) ggml_cycles_per_ms(),
                 (double) node->perf_cycles  / (double) ggml_cycles_per_ms() / (double) node->perf_runs,
                 (double) node->perf_time_us / 1000.0,
-                (double) node->perf_time_us / 1000.0 / node->perf_runs);
+                (double) node->perf_time_us / 1000.0 / node->perf_runs,
+                node->meta.layer_id+1, (node->name) ,(node->meta.info_op_on_device >= 0 || node->src0->backend!=GGML_BACKEND_CPU) ? "GPU" : "CPU",c_perf_impact);
     }
 
-    GGML_PRINT("n_leafs = %d\n", cgraph->n_leafs);
-    for (int i = 0; i < cgraph->n_leafs; i++) {
-        struct ggml_tensor * node = cgraph->leafs[i];
+     if (print_leafs) 
+    {
+        GGML_PRINT("n_leafs = %d\n", cgraph->n_leafs);
+        for (int i = 0; i < cgraph->n_leafs; i++) {
+            struct ggml_tensor * node = cgraph->leafs[i];
 
-        GGML_PRINT(" - %3d: [ %5" PRId64 ", %5" PRId64 "] %8s\n",
-                i,
-                node->ne[0], node->ne[1],
-                GGML_OP_NAME[node->op]);
+            GGML_PRINT(" - %3d: [ %5" PRId64 ", %5" PRId64 "] %8s\n",
+                    i,
+                    node->ne[0], node->ne[1],
+                    GGML_OP_NAME[node->op]);
+            }
     }
 
     for (int i = 0; i < GGML_OP_COUNT; i++) {
