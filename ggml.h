@@ -220,6 +220,18 @@ extern "C" {
     typedef uint16_t ggml_fp16_t;
 #endif
 
+// we need atomic support for the param struct - this needs to be improved
+#if defined(_WIN32) 
+    typedef volatile long atomic_int;
+    typedef atomic_int atomic_bool;
+#else
+    #ifndef __cplusplus
+    #include <stdatomic.h>
+    #else
+    typedef volatile long atomic_int;
+    typedef atomic_int atomic_bool;
+    #endif
+#endif
     // convert FP16 <-> FP32
     GGML_API float       ggml_fp16_to_fp32(ggml_fp16_t x);
     GGML_API ggml_fp16_t ggml_fp32_to_fp16(float x);
@@ -454,7 +466,11 @@ extern "C" {
         // work buffer for all threads
         size_t wsize;
         void * wdata;
+
+        // atomic counter used to distribute chunks of work
+        atomic_int * aic;
     };
+
 
     // misc
 
