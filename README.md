@@ -1,6 +1,6 @@
 llama.cpp modification to run Falcon (work in progress)
 
-**The Bloke features a well known fine tuned variants with quantization:**  
+**The Bloke features fine tuned weights in ggml v3 with various quantization options:**  
 https://huggingface.co/TheBloke/falcon-40b-instruct-GGML  
 https://huggingface.co/TheBloke/WizardLM-Uncensored-Falcon-40B-GGML  
 https://huggingface.co/TheBloke/falcon-7b-instruct-GGML  
