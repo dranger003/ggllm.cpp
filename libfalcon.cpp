@@ -744,7 +744,7 @@ struct llama_model_loader {
                 short_name.replace(bias_pos, 5, ".b");
             }
             strncpy(tensor->meta.short_name, short_name.c_str(), GGML_MAX_NAME);
-            tensor->meta.short_name[GGML_MAX_NAME] = 0;
+            tensor->meta.short_name[GGML_MAX_NAME-1] = 0;
         } 
             
         // printf("falcon.cpp: creating tensor %s\n", lt.name.c_str());
