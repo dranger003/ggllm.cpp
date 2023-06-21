@@ -123,12 +123,12 @@ int main(int argc, char ** argv) {
     if (params.mem_test) {
         {
             const std::vector<llama_token> tmp(params.n_batch, falcon_token_bos());
-            falcon_eval(ctx, tmp.data(), tmp.size(), 0, params.n_threads);
+            falcon_eval(ctx, tmp.data(), tmp.size(), 0, params.n_threads,params.debug_timings);
         }
 
         {
             const std::vector<llama_token> tmp = { 0, };
-            falcon_eval(ctx, tmp.data(), tmp.size(), params.n_predict - 1, params.n_threads);
+            falcon_eval(ctx, tmp.data(), tmp.size(), params.n_predict - 1, params.n_threads,params.debug_timings);
         }
 
         falcon_print_timings(ctx);
@@ -332,7 +332,7 @@ int main(int argc, char ** argv) {
     // do one empty run to warm up the model
     {
         const std::vector<llama_token> tmp = { falcon_token_bos(), };
-        falcon_eval(ctx, tmp.data(), tmp.size(), 0, params.n_threads);
+        falcon_eval(ctx, tmp.data(), tmp.size(), 0, params.n_threads,0);
         llama_reset_timings(ctx);
     }
 
@@ -409,7 +409,9 @@ int main(int argc, char ** argv) {
                 if (n_eval > params.n_batch) {
                     n_eval = params.n_batch;
                 }
-                if (falcon_eval(ctx, &embd[i], n_eval, n_past, params.n_threads)) {
+                int debug_timings = params.debug_timings;
+                if (n_remain == 1 && debug_timings == 2) debug_timings = 3; // we have no access to the last information in eval()
+                if (falcon_eval(ctx, &embd[i], n_eval, n_past, params.n_threads,debug_timings)) {
                     fprintf(stderr, "%s : failed to eval\n", __func__);
                     return 1;
                 }

@@ -1449,7 +1449,8 @@ static bool falcon_eval_internal(
             const int    n_tokens,
             const int    n_past,
             const int    n_threads,
-            const char * cgraph_fname) {
+            const char * cgraph_fname,
+            int debug_timings) {
 
     const int64_t t_start_us = ggml_time_us();
 
@@ -1817,11 +1818,24 @@ static bool falcon_eval_internal(
         ggml_graph_export(&gf, cgraph_fname);
     }
 
-#if defined(GGML_PERF) && TRUE
+
     // print timing information per ggml operation (for debugging purposes)
-    // requires GGML_PERF to be defined
-    ggml_graph_print_impl(&gf,true,false,GGML_OP_NONE); // GGML_OP_MUL_MAT
-#endif
+    if (debug_timings)
+    {
+        if (n_past > 0)
+        {
+            static bool first = true;
+            if ((first && debug_timings <=2) || debug_timings > 2)
+            {
+                first = false;
+                ggml_graph_print_impl(&gf,true,false,GGML_OP_NONE); // GGML_OP_MUL_MAT
+            }
+        }
+        // requires GGML_PERF to be defined for actual timing information
+        
+    }
+    
+
 
     // plot the computation graph in dot format (for debugging purposes)
     //if (n_past%100 == 0) {
@@ -3444,8 +3458,8 @@ int falcon_eval(
            const llama_token * tokens,
                          int   n_tokens,
                          int   n_past,
-                         int   n_threads) {
-    if (!falcon_eval_internal(*ctx, tokens, n_tokens, n_past, n_threads, nullptr)) {
+                         int   n_threads, int debug_timings) {
+    if (!falcon_eval_internal(*ctx, tokens, n_tokens, n_past, n_threads, nullptr, debug_timings)) {
         fprintf(stderr, "%s: failed to eval\n", __func__);
         return 1;
     }
@@ -3466,7 +3480,7 @@ int falcon_eval_export(struct falcon_context * ctx, const char * fname) {
 
     const std::vector<llama_token> tmp(n_batch, falcon_token_bos());
 
-    if (!falcon_eval_internal(*ctx, tmp.data(), tmp.size(), n_ctx, 1, fname)) {
+    if (!falcon_eval_internal(*ctx, tmp.data(), tmp.size(), n_ctx, 1, fname,0)) {
         fprintf(stderr, "%s: failed to eval\n", __func__);
         return 1;
     }
