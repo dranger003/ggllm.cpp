@@ -109,7 +109,7 @@ struct falcon_hparams {
     int32_t n_head  = 71;
     int32_t n_head_kv = 1;
     int32_t n_layer = 32;
-    int32_t version = 7; // 7 for Falcon-7B, 40 for Falcon-40B
+    int32_t n_falcon_type = 7; // 7 for Falcon-7B, 40 for Falcon-40B
     enum llama_ftype ftype = LLAMA_FTYPE_MOSTLY_F16;
 
     bool operator!=(const falcon_hparams & other) const {
@@ -452,6 +452,10 @@ struct falcon_file_loader {
         : file(fname, "rb") {
         fprintf(stderr, "falcon.cpp: loading model from %s\n", fname);
         read_magic();
+        if (file_version <= 1)
+            fprintf(stderr, "falcon.cpp: file version %d - Use falcon_quantize to update version and improve performance\n", file_version);
+        else
+            fprintf(stderr, "falcon.cpp: file version %d\n", file_version);
         read_hparams();
         read_vocab();
         read_tensor_metadata(file_idx, tensors_map);
@@ -489,8 +493,7 @@ struct falcon_file_loader {
         hparams.n_head = file.read_u32();
         hparams.n_head_kv = file.read_u32();
         hparams.n_layer = file.read_u32();
-        hparams.version = file.read_u32();
-        // outdated ftype handling for ggml version 1 (TODO: upgrade and support both variants for compatibility)
+        hparams.n_falcon_type = file.read_u32();
         if (file_version == LLAMA_FILE_VERSION_GGML)
         {
             int32_t ftype = file.read_u32();
@@ -510,7 +513,7 @@ struct falcon_file_loader {
             uint32_t len = file.read_u32();
             std::string word = file.read_string(len);
 
-            float score = 0.0f;
+            float score = 0.0f; // flacon does not have scores in vocab, scores are a sentencepiece addition
             if (file_version >= LLAMA_FILE_VERSION_GGMF_V1) {
                 file.read_raw(&score, sizeof(score));
             }
@@ -598,7 +601,7 @@ struct llama_file_saver {
         file.write_u32(hparams.n_head);
         file.write_u32(hparams.n_head_kv);
         file.write_u32(hparams.n_layer);
-        file.write_u32(hparams.version);
+        file.write_u32(hparams.n_falcon_type);
         file.write_u32(new_ftype);
     }
     void write_vocab() {
@@ -1102,10 +1105,10 @@ static void falcon_model_load_internal(
             case 60: model.type = e_model::FALCON_40B; break;
             default:
                 {
-                    if (hparams.version == 7) {
+                    if (hparams.n_falcon_type == 7) {
                         model.type = e_model::FALCON_7B;
                     } else
-                    if (hparams.version == 40) {
+                    if (hparams.n_falcon_type == 40) {
                         model.type = e_model::FALCON_40B;
                     } else {
                         LLAMA_ASSERT(false);
@@ -1126,7 +1129,7 @@ static void falcon_model_load_internal(
         fprintf(stderr, "%s: n_head     = %u\n",  __func__, hparams.n_head);
         fprintf(stderr, "%s: n_head_kv     = %u\n",  __func__, hparams.n_head_kv);
         fprintf(stderr, "%s: n_layer    = %u\n",  __func__, hparams.n_layer);
-        fprintf(stderr, "%s: version      = %u\n",  __func__, hparams.version);
+        fprintf(stderr, "%s: n_falcon_type      = %u\n",  __func__, hparams.n_falcon_type);
         fprintf(stderr, "%s: ftype      = %u (%s)\n", __func__, hparams.ftype, llama_ftype_name(hparams.ftype));
         fprintf(stderr, "%s: n_ff       = %u\n",  __func__, n_ff);
         fprintf(stderr, "%s: n_parts    = %zu\n", __func__, ml->file_loaders.size());
@@ -1470,7 +1473,7 @@ static bool falcon_eval_internal(
     const int n_head       = hparams.n_head;
     const int n_head_kv = hparams.n_head_kv;
     const int n_vocab      = hparams.n_vocab;
-    const int version = hparams.version;
+    const int n_falcon_type = hparams.n_falcon_type;
     const int n_gpu_layers = model.n_gpu_layers;
     const size_t head_dim = n_embd / n_head; // == n_rot in llama
 
@@ -1555,7 +1558,7 @@ static bool falcon_eval_internal(
             offload_func(layernorm_output);
             ggml_set_name(layernorm_output, "layernorm_output");
 
-            if (model.type == FALCON_40B || version == 40)
+            if (model.type == FALCON_40B || n_falcon_type == 40)
             {
                  cur = ggml_norm(ctx0, inpL);
 

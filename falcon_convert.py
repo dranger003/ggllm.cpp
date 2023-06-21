@@ -42,19 +42,26 @@ def bytes_to_unicode():
     return dict(zip(bs, cs))
 
 if len(sys.argv) < 4:
-    print("Usage: python convert-hf-to-ggml.py num_parts model_name dir-output [use-f32]")
-    print("  num_parts: number of pytorch parts, use 0 if not a multipart model. example: 9")
-    print("  model_name: name of the model to convert. Example: 'bigscience/bloomz-560m'")
-    print("  dir-output: directory where the output file will be written")
-    print("  use-f32:    if present, use float32 instead of float16")
+    print("INFO: GGML V1 files produced are meant to be finalized through examples/falcon_quantize which will bring them to latest version and precision of choice");
+    print("Usage: python falcon_convert.py model_directory output_directory [use-f32]")
+    # print("  num_parts: number of pytorch parts, use 0 if not a multipart model. example: 9")
+    print("  model_directory: name of the directory and model you convert (it should be a subdirectory)")
+    print("  output-directory: directory where the output file will be written")
+    print("  use-f32:    if present, use float32 instead of float16 (f32 is recommended)")
     sys.exit(1)
 
-num_parts = int(sys.argv[1])
-model_name = sys.argv[2]
-dir_out = sys.argv[3]
+# num_parts = int(sys.argv[1])
+dir_model = sys.argv[1] # name and dir of model
+dir_out = sys.argv[2]   # output directory
 
 # make sure the output directory exists
 os.makedirs(dir_out, exist_ok=True)
+
+num_parts = 0 
+for file_name in os.listdir(dir_model): 
+    if "pytorch_model" in file_name and '-' in file_name and '.' in file_name: 
+        num_parts = max(num_parts, int(file_name.split('-')[-1].split('.')[0]))
+num_parts = int(num_parts)
 
 # possible data types
 #   ftype == 0 -> float32
@@ -63,27 +70,29 @@ os.makedirs(dir_out, exist_ok=True)
 # map from ftype to string
 ftype_str = ["f32", "f16"]
 ftype = 1
-if len(sys.argv) > 4:
+if len(sys.argv) > 3:
     ftype = 0
 
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained(dir_model)
+# print(tokenizer)
+config = AutoConfig.from_pretrained(dir_model, trust_remote_code=True)
 hparams = config.to_dict()
 
 n_head = hparams["n_head"]
 n_head_kv = hparams["n_head_kv"] if "n_head_kv" in hparams else 1
 head_dim = hparams["hidden_size"] // n_head
-print("* Loading model from: ", model_name)
+print("* Loading model from: ", dir_model)
 
-fname_out = dir_out + f"/ggml-model-{model_name.split('/')[-1]}-{ftype_str[ftype]}.bin"
+fname_out = dir_out + f"/ggml-model-{dir_model.split('/')[-1]}-{ftype_str[ftype]}.bin"
 fout = open(fname_out, "wb")
-fout.write(struct.pack("i", 0x67676d6c)) # magic: ggml in hex
+fout.write(struct.pack("i", 0x67676d66)) # magic: ggmf in hex (version 1) - possibly change to ggfc ?
+fout.write(struct.pack("i", 1))
 fout.write(struct.pack("i", hparams["vocab_size"]))
 fout.write(struct.pack("i", hparams["hidden_size"]))
 fout.write(struct.pack("i", n_head))
 fout.write(struct.pack("i", n_head_kv))
 fout.write(struct.pack("i", hparams["n_layer"]))
-fout.write(struct.pack("i", 40 if "n_head_kv" in hparams else 7))
+fout.write(struct.pack("i", 40 if "n_head_kv" in hparams else 7)) # obsolete field that breaks ggml compatibility - todo again remove one day
 fout.write(struct.pack("i", ftype))
 
 reverse_vocab = {id: encoded_tok for encoded_tok, id in tokenizer.vocab.items()}
@@ -94,13 +103,14 @@ for i in range(hparams["vocab_size"]):
     text = bytearray([byte_decoder[c] for c in reverse_vocab[i]])
     fout.write(struct.pack("i", len(text)))
     fout.write(text)
+    fout.write(struct.pack("f", 0.0)) # falcon uses bpe on RefinedWeb - no probability scores used
 
 if num_parts == 0:
     partnames= ('pytorch_model.bin',)
 else:
     partnames = (f'pytorch_model-{n:05}-of-{num_parts:05}.bin' for n in range(1, num_parts + 1))
 for partname in partnames:
-    filename = f'{model_name}/{partname}'
+    filename = f'{dir_model}/{partname}'
     print(f'\n* Loading part: {partname}')
     model = torch.load(filename, map_location = 'cpu')
     for name in model.keys():
