@@ -13,15 +13,12 @@ https://huggingface.co/tiiuae/falcon-40b-instruct
 https://huggingface.co/tiiuae/falcon-7b-instruct  
 
 **Conversion:**
-1) use falcon_convert_demo.py to produce a GGMLv0 binary from HF - not recommended to be used directly  
-2) use examples/falcon_quantize to convert these into GGMLv3 binaries of your choice including mmap support from there on  
-_Important: The Falcon 7B model features tensor sizes that do not support K-type quantizers - use the traditional quantization for those_  
+1) use falcon_convert.py to produce a GGML v1 binary from HF - not recommended to be used directly
+2) use examples/falcon_quantize to convert these into memory aligned GGMLv3 binaries of your choice including mmap support from there on
+_Important: The Falcon 7B model features tensor sizes which are not yet supported by K-type quantizers - use the traditional quantization for those_  
   
 **Status/Bugs:**  
-* CUDA-integration branch demo ready  
-* python conversion script is very basic (produces ggml v0)  
 * On linux Q5_1 7B user reports a batch token ingestion context memory issue, with -b 1 it's gone. Not reproduced on Windows
-* VRAM scratch/overhead calculation on CUDA can fail - if GPU RAM fills to 100% manually reduce the layers of --ngl until it fits  
   
 **How to compile:**
 ```
