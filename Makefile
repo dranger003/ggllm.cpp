@@ -295,6 +295,9 @@ quantize-stats: examples/quantize-stats/quantize-stats.cpp    build-info.h ggml.
 perplexity: examples/perplexity/perplexity.cpp                build-info.h ggml.o llama.o common.o $(OBJS)
 	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
 
+falcon_perplexity: examples/falcon_perplexity/falcon_perplexity.cpp                build-info.h ggml.o libfalcon.o falcon_common.o $(OBJS)
+	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
+
 embedding: examples/embedding/embedding.cpp                   build-info.h ggml.o llama.o common.o $(OBJS)
 	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
 
