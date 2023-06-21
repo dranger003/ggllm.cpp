@@ -31,6 +31,24 @@
 static console_state con_st;
 static falcon_context ** g_ctx;
 
+std::unordered_map<std::string, int> special_tokens_ids = {
+     {">>TITLE<<", 0},
+     {">>ABSTRACT<<", 1},
+     {">>INTRODUCTION<<", 2},
+     {">>SUMMARY<<", 3},
+     {">>COMMENT<<", 4},
+     {">>ANSWER<<", 5},
+     {">>QUESTION<<", 6},
+     {">>DOMAIN<<", 7},
+     {">>PREFIX<<", 8},
+     {">>SUFFIX<<", 9},
+     {">>MIDDLE<<", 10},
+     {"<|endoftext|>", 11},
+};
+
+
+
+
 static bool is_interacting = false;
 
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__)) || defined (_WIN32)
