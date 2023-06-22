@@ -1,4 +1,4 @@
-llama.cpp modification to run Falcon (work in progress)
+ggllm.cpp is a llama.cpp modification to run Falcon (work in progress)
 
 **The Bloke features fine tuned weights in ggml v3 with various quantization options:**  
 https://huggingface.co/TheBloke/falcon-40b-instruct-GGML  
@@ -14,11 +14,11 @@ https://huggingface.co/tiiuae/falcon-7b-instruct
 
 **Conversion:**
 1) use falcon_convert.py to produce a GGML v1 binary from HF - not recommended to be used directly
-2) use examples/falcon_quantize to convert these into memory aligned GGMLv3 binaries of your choice including mmap support from there on
-_Important: The Falcon 7B model features tensor sizes which are not yet supported by K-type quantizers - use the traditional quantization for those_  
+2) use examples/falcon_quantize to convert these into memory aligned GGMLv3 binaries of your choice including mmap support from there on  
+_The Falcon 7B model features tensor sizes which are not yet supported by K-type quantizers - use the traditional quantization for those_  
   
 **Status/Bugs:**  
-* On linux Q5_1 7B user reports a batch token ingestion context memory issue, with -b 1 it's gone. Not reproduced on Windows
+Cummulative token slowdown over increasing context
   
 **How to compile:**
 ```
@@ -30,9 +30,16 @@ rm -rf build; mkdir build; cd build
 cmake -DLLAMA_CUBLAS=1 ..
 cmake --build . --config Release
 # find binaries in ./bin
+```
 
+# Troubles with CUDA not found on linux ?  
+```
+export PATH="/usr/local/cuda/bin:$PATH"  
+cmake -DLLAMA_CUBLAS=1 -DCUDAToolkit_ROOT=/usr/local/cuda/ ..  
+```
 
 2) Installing on WSL (Windows Subsystem for Linux)
+```
 # I am getting slightly better timings on WSL than native windows
 # Use --no-mmap in WSL OR copy the model into native directory (not /mnt/) or it will get stuck loading (thanks @nauful)
 #Choose a current distro:
@@ -49,7 +56,8 @@ export LD_LIBRARY_PATH="/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH"
 export PATH="/usr/local/cuda-12.1/bin:$PATH"
 # now start with a fresh cmake and all should work 
 ```
-  
+   
+```
 **CUDA:**  
 Only some tensors supported currently, only mul_mat operation supported currently  
 q3_k timing on 3090 of Falcon 40B:  
@@ -72,7 +80,7 @@ CUDA sidenote:
 
 It appears the Q5 Falcon 40B inference time on CPU is as fast as the A100 fp16 inference time at 2 tk/second  
 CPU inference examples:  
-```
+
  Q:\ggllm.cpp> .\build\bin\Release\falcon_main.exe -t 31 -m Q:\models\falcon-40b\q5_1 -p "Love relates to hate like" -n 50 -ngl 0
 main: build = 677 (dd3d346)
 main: seed  = 1687010794
