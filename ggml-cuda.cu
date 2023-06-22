@@ -1503,34 +1503,133 @@ static void * g_scratch_buffer = nullptr;
 static size_t g_scratch_size = 1024*1024*1024; // 1 GB by default
 static size_t g_scratch_offset = 0;
 
-static int g_device_count = -1;
-static int g_main_device = 0;
+// Note: tensor_split defines the breakpoints of tensors that can be split {0,0.5}
 static float g_tensor_split[GGML_CUDA_MAX_DEVICES] = {0};
+static GPUStatus g_system_gpu_status;
 
 static cublasHandle_t g_cublas_handles[GGML_CUDA_MAX_DEVICES] = {nullptr};
 
 static cudaStream_t g_cudaStreams_main[GGML_CUDA_MAX_DEVICES] = { nullptr };
 
+// Todo verify: free and total memory reported by cudaMemGetInfo differs from gpu_z which also differs from hwinfo64.
+// Update the system status about available GPUs and memory usage
+void ggml_cuda_update_gpu_status(int device_id) {
+    int currentDevice = 0;
+    CUDA_CHECK(cudaGetDevice(&currentDevice));
+    if (device_id == -1) {
+        // Update all devices 
+        if (g_system_gpu_status.num_devices == 0)
+        {
+            CUDA_CHECK(cudaGetDeviceCount(&g_system_gpu_status.num_devices));
+            if (g_system_gpu_status.num_devices > GGML_CUDA_MAX_DEVICES) {
+                g_system_gpu_status.num_devices = GGML_CUDA_MAX_DEVICES;
+                fprintf(stderr, "WARNING: GGML_CUDA_MAX_DEVICES is smaller than the number of devices on the system. Using first %d devices.\n", GGML_CUDA_MAX_DEVICES);
+            }
+            g_system_gpu_status.total_vram = 0;
+            for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
+                CUDA_CHECK(cudaGetDeviceProperties(&g_system_gpu_status.device_props[id], id));
+            }
+        }
+        g_system_gpu_status.total_vram = 0;
+        g_system_gpu_status.total_free_vram = 0;
+        for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
+            CUDA_CHECK(cudaSetDevice(id));
+            CUDA_CHECK(cudaMemGetInfo(&g_system_gpu_status.device_vram_free[id], &g_system_gpu_status.device_vram_total[id]));
+            g_system_gpu_status.total_vram += g_system_gpu_status.device_vram_total[id];
+            g_system_gpu_status.total_free_vram += g_system_gpu_status.device_vram_free[id];
+        }
+        // restore current device
+        if (currentDevice != g_system_gpu_status.num_devices-1) {
+            CUDA_CHECK(cudaSetDevice(currentDevice));
+        }
+    } else {
+        // Update only the specified device
+        CUDA_CHECK(cudaGetDeviceProperties(&g_system_gpu_status.device_props[device_id], device_id));
+        CUDA_CHECK(cudaSetDevice(device_id));
+        CUDA_CHECK(cudaMemGetInfo(&g_system_gpu_status.device_vram_free[device_id], &g_system_gpu_status.device_vram_total[device_id]));
+        // go through all devices and update total/free
+        g_system_gpu_status.total_vram = 0;
+        g_system_gpu_status.total_free_vram = 0;
+        for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
+            g_system_gpu_status.total_vram += g_system_gpu_status.device_vram_total[id];
+            g_system_gpu_status.total_free_vram += g_system_gpu_status.device_vram_free[id];
+        }
+        // restore current device
+        if (device_id != currentDevice) {
+            CUDA_CHECK(cudaSetDevice(currentDevice));
+        }
+    }
+    
+#if 1
+    // required for proper vram distribution but split tensors require memory on primary GPU which could be disabled
+    // remove unused GPUs from available calculation
+    for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
+        if (g_tensor_split[id] >= 1.0 || (id > 0 && g_tensor_split[id] == g_tensor_split[id-1])) {
+            g_system_gpu_status.total_vram -= g_system_gpu_status.device_vram_total[id];
+            g_system_gpu_status.total_free_vram -= g_system_gpu_status.device_vram_free[id];
+        }
+        
+    }
+#endif
+}
+void ggml_cuda_print_gpu_status(const GPUStatus *status) {
+    if (status == NULL) {
+        printf("Error: Invalid GPU status pointer.\n");
+        return;
+    }
+
+    const char *divider = "+------------------------------------+------------+-----------+-----------+-----------+-----------+";
+    printf("\nCUDA Device Summary - %d devices found\n", status->num_devices);
+    printf("%s\n", divider);
+    printf("| %-34s | %10s | %9s | %9s | %9s | %9s |\n", "Device", "VRAM Total", "VRAM Free", "VRAM Used","Split at ", "Device ID");
+    printf("%s\n", divider);
+
+    for (int i = 0; i < status->num_devices; ++i) {
+        const struct cudaDeviceProp *prop = &status->device_props[i];
+        size_t vram_used = status->device_vram_total[i] - status->device_vram_free[i];
+        float split_at_percentage = g_tensor_split[i] * 100;
+        printf("| %-34s | %7zu MB | %6zu MB | %6zu MB | %8.1f%% | %2d %6s |\n", 
+                prop->name, status->device_vram_total[i] / (1024 * 1024), status->device_vram_free[i] / (1024 * 1024), vram_used / (1024 * 1024),split_at_percentage, i, (i == status->main_device_id) ? "(Main)" : "");
+        printf("%s\n", divider);
+    }
+    printf("Total VRAM: %.2f GB, Total available VRAM: %.2f GB\n", (float)status->total_vram / (1024 * 1024 * 1024), (float)status->total_free_vram / (1024 * 1024 * 1024));
+    printf("--------------------\n");
+}
+
+const GPUStatus* ggml_cuda_get_system_gpu_status() {
+    return &g_system_gpu_status;
+}
+
 void ggml_init_cublas() {
     static bool initialized = false;
-
+    int currentDevice = 0;
+    CUDA_CHECK(cudaGetDevice(&currentDevice));
     if (!initialized) {
-        CUDA_CHECK(cudaGetDeviceCount(&g_device_count));
-        GGML_ASSERT(g_device_count <= GGML_CUDA_MAX_DEVICES);
-        int64_t total_vram = 0;
-        fprintf(stderr, "%s: found %d CUDA devices:\n", __func__, g_device_count);
-        for (int id = 0; id < g_device_count; ++id) {
-            cudaDeviceProp prop;
-            CUDA_CHECK(cudaGetDeviceProperties(&prop, id));
-            fprintf(stderr, "  Device %d: %s\n", id, prop.name);
-            g_tensor_split[id] = total_vram;
-            total_vram += prop.totalGlobalMem;
-        }
-        for (int id = 0; id < g_device_count; ++id) {
-            g_tensor_split[id] /= total_vram;
-        }
+        g_system_gpu_status.num_devices = 0;
+        ggml_cuda_update_gpu_status(-1);
 
-        for (int id = 0; id < g_device_count; ++id) {
+        bool all_zero = true;
+        for (int i = 0; i < g_system_gpu_status.num_devices; ++i) {
+            if (g_tensor_split[i] != 0.0f) {
+                all_zero = false;
+            }
+        }
+        if (all_zero)
+        {
+            int64_t total_vram = 0;
+            for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
+                g_tensor_split[id] = total_vram;
+                size_t vram_free, vram_total;
+                vram_total = g_system_gpu_status.device_vram_total[id];
+                vram_free = g_system_gpu_status.device_vram_free[id];
+                total_vram += vram_free;
+            }
+            for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
+                g_tensor_split[id] /= total_vram;
+            }
+        }
+        ggml_cuda_print_gpu_status(&g_system_gpu_status);
+        for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
             CUDA_CHECK(cudaSetDevice(id));
 
             // create main stream
@@ -1540,17 +1639,27 @@ void ggml_init_cublas() {
             CUBLAS_CHECK(cublasCreate(&g_cublas_handles[id]));
             CUBLAS_CHECK(cublasSetMathMode(g_cublas_handles[id], CUBLAS_TF32_TENSOR_OP_MATH));
         }
+        CUDA_CHECK(cudaSetDevice(currentDevice));
 
         // configure logging to stdout
         // CUBLAS_CHECK(cublasLoggerConfigure(1, 1, 0, nullptr));
 
         initialized = true;
+        
     }
 }
 
+// prepare tensor split before we've initizalized cublas
+void ggml_cuda_set_tensor_split_prepare(const float * tensor_split, int num_devices) {
+    int cur_num_devices = g_system_gpu_status.num_devices;
+    g_system_gpu_status.num_devices = num_devices;
+    ggml_cuda_set_tensor_split(tensor_split);
+    g_system_gpu_status.num_devices = cur_num_devices;
+}
+// expect array of float proportions where to split each device id, if all 0.0 then no change to default split
 void ggml_cuda_set_tensor_split(const float * tensor_split) {
     bool all_zero = true;
-    for (int i = 0; i < g_device_count; ++i) {
+    for (int i = 0; i < g_system_gpu_status.num_devices; ++i) {
         if (tensor_split[i] != 0.0f) {
             all_zero = false;
             break;
@@ -1560,12 +1669,19 @@ void ggml_cuda_set_tensor_split(const float * tensor_split) {
         return;
     }
     float split_sum = 0.0f;
-    for (int i = 0; i < g_device_count; ++i) {
+    for (int i = 0; i < g_system_gpu_status.num_devices; ++i) {
         g_tensor_split[i] = split_sum;
         split_sum += tensor_split[i];
     }
-    for (int i = 0; i < g_device_count; ++i) {
-        g_tensor_split[i] /= split_sum;
+    for (int i = 0; i < g_system_gpu_status.num_devices; ++i) {
+        float device_prop = tensor_split[i] / split_sum;
+        if (device_prop == 0.0f) {
+            g_tensor_split[i] = 1.0f;
+        }
+        else {
+            g_tensor_split[i] /= split_sum;
+        }
+
     }
 }
 
@@ -1822,7 +1938,7 @@ inline void ggml_cuda_op_mul_mat_cublas(
 
     // the main device has a larger memory buffer to hold the results from all GPUs
     // ldc == nrows of the matrix that cuBLAS writes into
-    int ldc = dst->backend == GGML_BACKEND_GPU && id == g_main_device ? ne0 : i01_diff;
+    int ldc = dst->backend == GGML_BACKEND_GPU && id == g_system_gpu_status.main_device_id ? ne0 : i01_diff;
 
     CUBLAS_CHECK(cublasSetStream(g_cublas_handles[id], cudaStream_main));
     CUBLAS_CHECK(
@@ -2002,23 +2118,23 @@ static void ggml_cuda_op(const ggml_tensor * src0, const ggml_tensor * src1, ggm
     size_t  dst_asf[GGML_CUDA_MAX_DEVICES] = {0};
 
     // if multiple GPUs are used they need to wait for the main GPU to finish
-    if (split && g_device_count > 1) {
-        CUDA_CHECK(cudaSetDevice(g_main_device));
+    if (split && g_system_gpu_status.num_devices > 1) {
+        CUDA_CHECK(cudaSetDevice(g_system_gpu_status.main_device_id));
         CUDA_CHECK(cudaDeviceSynchronize());
     }
 
-    for (int id = 0; id < g_device_count; ++id) {
-        if (!split && id != g_main_device) {
+    for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
+        if (!split && id != g_system_gpu_status.main_device_id) {
             continue;
         }
 
-        const bool src1_on_device = use_src1 && src1->backend == GGML_BACKEND_GPU && id == g_main_device;
-        const bool dst_on_device = dst->backend == GGML_BACKEND_GPU && id == g_main_device;
+        const bool src1_on_device = use_src1 && src1->backend == GGML_BACKEND_GPU && id == g_system_gpu_status.main_device_id;
+        const bool dst_on_device = dst->backend == GGML_BACKEND_GPU && id == g_system_gpu_status.main_device_id;
 
         int64_t row_low, row_high;
         if (split) {
             row_low = id == 0 ? 0 : nrows0*g_tensor_split[id];
-            row_high = id == g_device_count - 1 ? nrows0 : nrows0*g_tensor_split[id + 1];
+            row_high = id == g_system_gpu_status.num_devices - 1 ? nrows0 : nrows0*g_tensor_split[id + 1];
         } else {
             row_low = 0;
             row_high = nrows0;
@@ -2096,8 +2212,8 @@ static void ggml_cuda_op(const ggml_tensor * src0, const ggml_tensor * src1, ggm
                 // Removing the first assert or changing the order of the arguments causes the second assert to fail.
                 // Removing both asserts results in i01_high becoming 0 which in turn results in garbage output.
                 // The root cause seems to be a problem with i0_offset_high becoming 0 when it should always be >0 (for single GPU).
-                GGML_ASSERT(i01_low == 0 || g_device_count > 1);
-                GGML_ASSERT(i01_high == rows_per_iter || g_device_count > 1);
+                GGML_ASSERT(i01_low == 0 || g_system_gpu_status.num_devices > 1);
+                GGML_ASSERT(i01_high == rows_per_iter || g_system_gpu_status.num_devices > 1);
 
                 const int64_t i01_diff = i01_high - i01_low;
                 if (i01_diff == 0) {
@@ -2124,7 +2240,7 @@ static void ggml_cuda_op(const ggml_tensor * src0, const ggml_tensor * src1, ggm
 
                 // the main device memory buffer can be on VRAM scratch, with space for all partial results
                 // in that case an offset on dst_ddf_i is needed
-                if (dst->backend == GGML_BACKEND_GPU && id == g_main_device) {
+                if (dst->backend == GGML_BACKEND_GPU && id == g_system_gpu_status.main_device_id) {
                     dst_ddf_i += i01_low; // offset is 0 if no tensor split
                 }
 
@@ -2135,9 +2251,9 @@ static void ggml_cuda_op(const ggml_tensor * src0, const ggml_tensor * src1, ggm
                         int64_t nrows1 = flatten_rows ? nrows0 : ne11;
                         CUDA_CHECK(ggml_cuda_cpy_tensor_2d(src1_ddf_i, src1, i03, i02, 0, nrows1, cudaStream_main));
                     } else if (src1->backend == GGML_BACKEND_GPU && src1_is_contiguous) {
-                        if (id != g_main_device) {
+                        if (id != g_system_gpu_status.main_device_id) {
                             GGML_ASSERT(!flatten_rows);
-                            float * src1_ddf_i_source = (float *) src1_extra->data_device[g_main_device];
+                            float * src1_ddf_i_source = (float *) src1_extra->data_device[g_system_gpu_status.main_device_id];
                             src1_ddf_i_source += i11*src1_stride;
                             CUDA_CHECK(cudaMemcpyAsync(src1_ddf_i, src1_ddf_i_source, src1_stride*sizeof(float),
                                                     cudaMemcpyDeviceToDevice, cudaStream_main));
@@ -2175,7 +2291,7 @@ static void ggml_cuda_op(const ggml_tensor * src0, const ggml_tensor * src1, ggm
                         dst_off_device = dst->data;
                         kind = cudaMemcpyDeviceToHost;
                     } else if (dst->backend == GGML_BACKEND_GPU) {
-                        dst_off_device = dst_extra->data_device[g_main_device];
+                        dst_off_device = dst_extra->data_device[g_system_gpu_status.main_device_id];
                         kind = cudaMemcpyDeviceToDevice;
                     } else {
                         GGML_ASSERT(false);
@@ -2200,7 +2316,7 @@ static void ggml_cuda_op(const ggml_tensor * src0, const ggml_tensor * src1, ggm
     }
 
     // wait until each device is finished, then free their buffers
-    for (int id = 0; id < g_device_count; ++id) {
+    for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
         if (src0_asq[id] == 0 && src0_asf[id] == 0 && src1_asf[id] == 0 && dst_asf[id] == 0) {
             continue;
         }
@@ -2272,17 +2388,17 @@ void ggml_cuda_mul_mat_vec_p021(const ggml_tensor * src0, const ggml_tensor * sr
     const int64_t ne01 = src0->ne[1];
     const int64_t ne02 = src0->ne[2];
 
-    CUDA_CHECK(cudaSetDevice(g_main_device));
-    cudaStream_t cudaStream_main = g_cudaStreams_main[g_main_device];
+    CUDA_CHECK(cudaSetDevice(g_system_gpu_status.main_device_id));
+    cudaStream_t cudaStream_main = g_cudaStreams_main[g_system_gpu_status.main_device_id];
 
     struct ggml_tensor_extra_gpu * src0_extra = (ggml_tensor_extra_gpu *) src0->extra;
-    void * src0_ddq = src0_extra->data_device[g_main_device];
+    void * src0_ddq = src0_extra->data_device[g_system_gpu_status.main_device_id];
 
     struct ggml_tensor_extra_gpu * src1_extra = (ggml_tensor_extra_gpu *) src1->extra;
-    float * src1_ddf = (float *) src1_extra->data_device[g_main_device];
+    float * src1_ddf = (float *) src1_extra->data_device[g_system_gpu_status.main_device_id];
 
     struct ggml_tensor_extra_gpu * dst_extra = (ggml_tensor_extra_gpu *) dst->extra;
-    float * dst_ddf = (float *) dst_extra->data_device[g_main_device];
+    float * dst_ddf = (float *) dst_extra->data_device[g_system_gpu_status.main_device_id];
 
     ggml_mul_mat_p021_f16_f32_cuda(src0_ddq, src1_ddf, dst_ddf, ne00, ne01, ne02, cudaStream_main);
 }
@@ -2301,17 +2417,17 @@ void ggml_cuda_mul_mat_vec_nc(const ggml_tensor * src0, const ggml_tensor * src1
     const int64_t nb01 = src0->nb[1];
     const int64_t nb02 = src0->nb[2];
 
-    CUDA_CHECK(cudaSetDevice(g_main_device));
-    cudaStream_t cudaStream_main = g_cudaStreams_main[g_main_device];
+    CUDA_CHECK(cudaSetDevice(g_system_gpu_status.main_device_id));
+    cudaStream_t cudaStream_main = g_cudaStreams_main[g_system_gpu_status.main_device_id];
 
     struct ggml_tensor_extra_gpu * src0_extra = (ggml_tensor_extra_gpu *) src0->extra;
-    void * src0_ddq = src0_extra->data_device[g_main_device];
+    void * src0_ddq = src0_extra->data_device[g_system_gpu_status.main_device_id];
 
     struct ggml_tensor_extra_gpu * src1_extra = (ggml_tensor_extra_gpu *) src1->extra;
-    float * src1_ddf = (float *) src1_extra->data_device[g_main_device];
+    float * src1_ddf = (float *) src1_extra->data_device[g_system_gpu_status.main_device_id];
 
     struct ggml_tensor_extra_gpu * dst_extra = (ggml_tensor_extra_gpu *) dst->extra;
-    float * dst_ddf = (float *) dst_extra->data_device[g_main_device];
+    float * dst_ddf = (float *) dst_extra->data_device[g_system_gpu_status.main_device_id];
 
     const int row_stride_x = nb01 / sizeof(half);
     const int channel_stride_x = nb02 / sizeof(half);
@@ -2371,14 +2487,14 @@ void ggml_cuda_cpy(const ggml_tensor * src0, const ggml_tensor * src1, ggml_tens
     const int64_t nb11 = src1->nb[1];
     const int64_t nb12 = src1->nb[2];
 
-    CUDA_CHECK(cudaSetDevice(g_main_device));
-    cudaStream_t cudaStream_main = g_cudaStreams_main[g_main_device];
+    CUDA_CHECK(cudaSetDevice(g_system_gpu_status.main_device_id));
+    cudaStream_t cudaStream_main = g_cudaStreams_main[g_system_gpu_status.main_device_id];
 
     const struct ggml_tensor_extra_gpu * src0_extra = (ggml_tensor_extra_gpu *) src0->extra;
     const struct ggml_tensor_extra_gpu * src1_extra = (ggml_tensor_extra_gpu *) src1->extra;
 
-    char * src0_ddc = (char *) src0_extra->data_device[g_main_device];
-    char * src1_ddc = (char *) src1_extra->data_device[g_main_device];
+    char * src0_ddc = (char *) src0_extra->data_device[g_system_gpu_status.main_device_id];
+    char * src1_ddc = (char *) src1_extra->data_device[g_system_gpu_status.main_device_id];
 
     if (src0->type == GGML_TYPE_F32 && src1->type == GGML_TYPE_F32) {
         ggml_cpy_f32_f32_cuda(src0_ddc, src1_ddc, ne, ne00, ne01, nb00, nb01, nb02,
@@ -2421,8 +2537,8 @@ void ggml_cuda_transform_tensor(void * data, struct ggml_tensor * tensor) {
     struct ggml_tensor_extra_gpu * extra = new struct ggml_tensor_extra_gpu;
     memset(extra, 0, sizeof(*extra));
 
-    for (int id = 0; id < g_device_count; ++id) {
-        if (backend == GGML_BACKEND_GPU && id != g_main_device) {
+    for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
+        if (backend == GGML_BACKEND_GPU && id != g_system_gpu_status.main_device_id) {
             continue;
         }
 
@@ -2434,7 +2550,7 @@ void ggml_cuda_transform_tensor(void * data, struct ggml_tensor * tensor) {
             row_high = nrows;
         } else if (backend == GGML_BACKEND_GPU_SPLIT) {
             row_low = id == 0 ? 0 : nrows*g_tensor_split[id];
-            row_high = id == g_device_count - 1 ? nrows : nrows*g_tensor_split[id + 1];
+            row_high = id == g_system_gpu_status.num_devices - 1 ? nrows : nrows*g_tensor_split[id + 1];
         } else {
             GGML_ASSERT(false);
         }
@@ -2466,7 +2582,7 @@ void ggml_cuda_free_data(struct ggml_tensor * tensor) {
 
     ggml_tensor_extra_gpu * extra = (ggml_tensor_extra_gpu *) tensor->extra;
 
-    for (int id = 0; id < g_device_count; ++id) {
+    for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
         if (extra->data_device[id] == nullptr) {
             continue;
         }
@@ -2501,19 +2617,19 @@ void ggml_cuda_assign_buffers_impl(struct ggml_tensor * tensor, bool scratch) {
         tensor->op == GGML_OP_VIEW;
     const size_t size = ggml_nbytes(tensor);
 
-    CUDA_CHECK(cudaSetDevice(g_main_device));
+    CUDA_CHECK(cudaSetDevice(g_system_gpu_status.main_device_id));
     if (inplace && tensor->src0->backend == GGML_BACKEND_GPU) {
         struct ggml_tensor_extra_gpu * src0_extra = (ggml_tensor_extra_gpu * ) tensor->src0->extra;
-        char * src0_ddc = (char *) src0_extra->data_device[g_main_device];
+        char * src0_ddc = (char *) src0_extra->data_device[g_system_gpu_status.main_device_id];
         size_t offset = 0;
         if (tensor->op == GGML_OP_VIEW) {
             memcpy(&offset, tensor->opt[0]->data, sizeof(size_t));
         }
-        extra->data_device[g_main_device] = src0_ddc + offset;
+        extra->data_device[g_system_gpu_status.main_device_id] = src0_ddc + offset;
     } else if (tensor->op == GGML_OP_CPY) {
         struct ggml_tensor_extra_gpu * src1_extra = (ggml_tensor_extra_gpu * ) tensor->src1->extra;
-        void * src1_ddv = src1_extra->data_device[g_main_device];
-        extra->data_device[g_main_device] = src1_ddv;
+        void * src1_ddv = src1_extra->data_device[g_system_gpu_status.main_device_id];
+        extra->data_device[g_system_gpu_status.main_device_id] = src1_ddv;
     } else if (scratch) {
         GGML_ASSERT(size <= g_scratch_size);
         if (g_scratch_offset + size > g_scratch_size) {
@@ -2525,7 +2641,7 @@ void ggml_cuda_assign_buffers_impl(struct ggml_tensor * tensor, bool scratch) {
             CUDA_CHECK(cudaMalloc(&data, g_scratch_size));
             g_scratch_buffer = data;
         }
-        extra->data_device[g_main_device] = data + g_scratch_offset;
+        extra->data_device[g_system_gpu_status.main_device_id] = data + g_scratch_offset;
 
         g_scratch_offset += size;
 
@@ -2534,7 +2650,7 @@ void ggml_cuda_assign_buffers_impl(struct ggml_tensor * tensor, bool scratch) {
         void * data;
         CUDA_CHECK(cudaMalloc(&data, size));
         CUDA_CHECK(cudaMemset(data, 0, size));
-        extra->data_device[g_main_device] = data;
+        extra->data_device[g_system_gpu_status.main_device_id] = data;
     }
 
     tensor->extra = extra;
@@ -2549,17 +2665,13 @@ void ggml_cuda_assign_buffers_no_scratch(struct ggml_tensor * tensor) {
 }
 
 void ggml_cuda_set_main_device(int main_device) {
-    if (main_device >= g_device_count) {
-        fprintf(stderr, "warning: cannot set main_device=%d because there are only %d devices. Using device %d instead.\n",
-                main_device, g_device_count, g_main_device);
-        return;
-    }
-    g_main_device = main_device;
-    if (g_device_count > 1) {
-        cudaDeviceProp prop;
-        CUDA_CHECK(cudaGetDeviceProperties(&prop, g_main_device));
-        fprintf(stderr, "%s: using device %d (%s) as main device\n", __func__, g_main_device, prop.name);
-    }
+    // if (main_device >= g_system_gpu_status.num_devices) {
+    //     fprintf(stderr, "warning: cannot set main_device=%d because there are only %d devices. Using device %d instead.\n",
+    //             main_device, g_system_gpu_status.num_devices, g_system_gpu_status.main_device_id);
+    //     return;
+    // }
+    // we accept setting it before initialization
+    g_system_gpu_status.main_device_id = main_device;
 }
 
 void ggml_cuda_set_scratch_size(size_t scratch_size) {
