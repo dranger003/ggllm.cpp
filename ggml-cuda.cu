@@ -1563,6 +1563,13 @@ void ggml_cuda_update_gpu_status(int device_id) {
 #if 1
     // required for proper vram distribution but split tensors require memory on primary GPU which could be disabled
     // remove unused GPUs from available calculation
+    bool all_zero = true;
+    for (int i = 0; i < g_system_gpu_status.num_devices; ++i) {
+        if (g_tensor_split[i] != 0.0f) {
+            all_zero = false;
+        }
+    }
+    if (!all_zero)
     for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
         if (g_tensor_split[id] >= 1.0 || (id > 0 && g_tensor_split[id] == g_tensor_split[id-1])) {
             g_system_gpu_status.total_vram -= g_system_gpu_status.device_vram_total[id];
