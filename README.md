@@ -56,6 +56,8 @@ export LD_LIBRARY_PATH="/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH"
 export PATH="/usr/local/cuda-12.1/bin:$PATH"
 # now start with a fresh cmake and all should work 
 ```
+
+When using "make": export LLAMA_CUBLAS=1; make falcon_main 
    
 ```
 **CUDA:**  
