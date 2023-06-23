@@ -1214,6 +1214,7 @@ static void falcon_model_load_internal(
     size_t vram_free = 0; // for vram simulation below
     size_t vram_total = 0; // for vram simulation below
 #if defined(GGML_USE_CUBLAS)
+    ggml_cuda_update_gpu_status(-1);
     const GPUStatus *system_gpu_status = ggml_cuda_get_system_gpu_status();
     vram_free = system_gpu_status->total_free_vram;
     vram_total = system_gpu_status->total_vram;
