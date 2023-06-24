@@ -9323,7 +9323,7 @@ static void ggml_compute_forward_repeat2_f32(
             }
         }
     }
-    // ggml_tensor_printf(dst, __func__, __LINE__, true,true);
+    // if (ne01 == 100)     ggml_tensor_printf(dst, __func__, __LINE__, true,true);
 }
 
 static void ggml_compute_forward_repeat2(
