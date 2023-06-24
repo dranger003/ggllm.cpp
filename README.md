@@ -18,30 +18,33 @@ https://huggingface.co/tiiuae/falcon-7b-instruct
 _The Falcon 7B model features tensor sizes which are not yet supported by K-type quantizers - use the traditional quantization for those_  
   
 **Status/Bugs:**  
-Cummulative token slowdown over increasing context
+Cummulative token slowdown over increasing context (party solved)
   
-**How to compile:**
-```
-How to build:
+**How to compile ggllm.cpp:**
 1) Recommended with cmake: (change the CUBLAS flag to 0 to disable CUDA requirements and support)
-git clone
+```
+git clone https://github.com/cmp-nct/ggllm.cpp
 cd ggllm.cpp
 rm -rf build; mkdir build; cd build
-cmake -DLLAMA_CUBLAS=1 ..
-cmake --build . --config Release
-# find binaries in ./bin
-```
-
-# Troubles with CUDA not found on linux ?  
-```
-export PATH="/usr/local/cuda/bin:$PATH"  
+# if you do not have cuda in path:
+export PATH="/usr/local/cuda/bin:$PATH"
+# in case of problems, this sometimes helped
+#export CPATH="/usr/local/cuda/targets/x86_64-linux/include:"
+#export LD_LIBRARY_PATH="/usr/local/cuda/lib64:"
 cmake -DLLAMA_CUBLAS=1 -DCUDAToolkit_ROOT=/usr/local/cuda/ ..  
+cmake --build . --config Release
+# find the binaries in ./bin
+# falcon_main, falcon_quantize, falcon_perplexity
+```
+2) Building with make (fallback):
+```
+export LLAMA_CUBLAS=1;
+make falcon_main falcon_quantize falcon_perplexity
 ```
 
-2) Installing on WSL (Windows Subsystem for Linux)
+3) Installing on WSL (Windows Subsystem for Linux)
 ```
-# I am getting slightly better timings on WSL than native windows
-# Use --no-mmap in WSL OR copy the model into native directory (not /mnt/) or it will get stuck loading (thanks @nauful)
+# Use --no-mmap in WSL OR copy the model into a native directory (not /mnt/) or it will get stuck loading (thanks @nauful)
 #Choose a current distro:
 wsl.exe --list --online
 wsl --install -d distro
@@ -57,91 +60,51 @@ export PATH="/usr/local/cuda-12.1/bin:$PATH"
 # now start with a fresh cmake and all should work 
 ```
 
-When using "make": export LLAMA_CUBLAS=1; make falcon_main 
    
+**Inference speed**  
+Only some tensors are GPU supported currently and only mul_mat operation supported
+**Falcon 40B 6 bit K-type quantization:**
 ```
-**CUDA:**  
-Only some tensors supported currently, only mul_mat operation supported currently  
-q3_k timing on 3090 of Falcon 40B:  
-falcon_print_timings: prompt eval time =   702.55 ms /     3 tokens (  234.18 ms per token)  
-falcon_print_timings:        eval time =  3350.65 ms /    24 runs   (  139.61 ms per token)  
-  
-q4_k timing on 3090 of falcon 40B (partial offload):  
-falcon_print_timings: prompt eval time =   590.82 ms /     3 tokens (  196.94 ms per token)  
-falcon_print_timings:        eval time =  2817.37 ms /    24 runs   (  117.39 ms per token)  
-  
-q4_1 timing on 3090 of falcon 7B:  
-falcon_print_timings: prompt eval time =   115.30 ms /     3 tokens (   38.43 ms per token)  
-falcon_print_timings:        eval time =  5926.74 ms /   147 runs   (   40.32 ms per token)  
+falcon_main.exe -t 7 -m Q:\models\falcon-40b-instruct\q6_k -n 512 -n 32  -ngl 70 --debug-timings 0 -b 1 --ignore-eos -p "I am"
+...
+falcon_print_timings:        load time = 12642.32 ms
+falcon_print_timings:      sample time =     7.18 ms /    32 runs   (    0.22 ms per token,  4458.69 tokens per second)
+falcon_print_timings:        eval time =  2270.69 ms /    33 runs   (   68.81 ms per token,    14.53 tokens per second)
+falcon_print_timings:       total time =  2281.91 ms
+```
 
+**Falcon 40B 4 bit K-type quantization:**
+```
+falcon_main.exe -t 7 -m Q:\models\falcon-40b\q4_k -n 512 -n 128  -ngl 70 --debug-timings 0 -b 1 --ignore-eos -p "I am"
+...
+falcon_print_timings:        load time =  8290.64 ms
+falcon_print_timings:      sample time =    28.63 ms /   128 runs   (    0.22 ms per token,  4471.46 tokens per second)
+falcon_print_timings:        eval time = 11148.03 ms /   129 runs   (   86.42 ms per token,    11.57 tokens per second)
+falcon_print_timings:       total time = 11193.44 ms
+```
+
+**Falcon 7B 8 bit quantization:**
+```
+falcon_main.exe -t 7 -m Q:\models\falcon-7b-instruct\q8_0 -n 512 -n 32  -ngl 70 --debug-timings 0 -b 1 --ignore-eos -p "I am"
+...
+falcon_print_timings:        load time =  2684.99 ms
+falcon_print_timings:      sample time =     7.39 ms /    32 runs   (    0.23 ms per token,  4331.35 tokens per second)
+falcon_print_timings:        eval time =   885.77 ms /    33 runs   (   26.84 ms per token,    37.26 tokens per second)
+falcon_print_timings:       total time =   897.33 ms
+```
+
+**Falcon 7B 4 bit quantization:**
+```
+falcon_main.exe -t 7 -m Q:\models\falcon-7b\q4_1 -n 512 -n 32  -ngl 70 --debug-timings 0 -b 1 --ignore-eos -p "I am"
+...
+falcon_print_timings:        load time =  2233.01 ms
+falcon_print_timings:      sample time =     7.22 ms /    32 runs   (    0.23 ms per token,  4432.13 tokens per second)
+falcon_print_timings:        eval time =   851.15 ms /    33 runs   (   25.79 ms per token,    38.77 tokens per second)
+falcon_print_timings:       total time =   862.07 ms
+```
 
 CUDA sidenote:  
-1) use 1 less threads than you have physical processor cores  
-2) If it's too slow and GPU memory is at 100% then the automated tensor skip is not working properly, reduce --ngl until gpu memory does not saturate fully at first inference  
+1) try to use 1 less threads than you have physical processor cores 
+2) If it's too slow and GPU memory is at 100% then the automated tensor skip is not working properly, reduce --ngl until gpu memory does not saturate fully at first inference
+3) use "-b 1" if low on VRAM or when using short prompts 
 
-
-It appears the Q5 Falcon 40B inference time on CPU is as fast as the A100 fp16 inference time at 2 tk/second  
-CPU inference examples:  
-
- Q:\ggllm.cpp> .\build\bin\Release\falcon_main.exe -t 31 -m Q:\models\falcon-40b\q5_1 -p "Love relates to hate like" -n 50 -ngl 0
-main: build = 677 (dd3d346)
-main: seed  = 1687010794
-ggml_init_cublas: found 1 CUDA devices:
-  Device 0: NVIDIA GeForce RTX 3090
-falcon.cpp: loading model from Q:\models\falcon-40b\q5_1
-falcon_model_load_internal: format     = ggjt v3 (latest)
-falcon_model_load_internal: n_vocab    = 65024
-falcon_model_load_internal: n_ctx      = 512
-falcon_model_load_internal: n_embd     = 8192
-falcon_model_load_internal: n_head     = 128
-falcon_model_load_internal: n_head_kv     = 8
-falcon_model_load_internal: n_layer    = 60
-falcon_model_load_internal: version      = 40
-falcon_model_load_internal: ftype      = 9 (mostly Q5_1)
-falcon_model_load_internal: n_ff       = 32768
-falcon_model_load_internal: n_parts    = 1
-falcon_model_load_internal: model size = 40B
-falcon_model_load_internal: ggml ctx size =    0.00 MB (mmap size = 29929.00 MB)
-falcon_model_load_internal: using CUDA for GPU acceleration
-falcon_model_load_internal: mem required  = 33513.70 MB (+  120.00 MB per state)
-falcon_model_load_internal: offloading 0 layers to GPU
-falcon_model_load_internal: total VRAM used: 512 MB
-...................................................................................................
-falcon_init_from_file: kv self size  =  120.00 MB
-
-system_info: n_threads = 31 / 32 | AVX = 1 | AVX2 = 1 | AVX512 = 0 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | FMA = 1 | NEON = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 1 | SSE3 = 1 | VSX = 0 |
-sampling: repeat_last_n = 64, repeat_penalty = 1.100000, presence_penalty = 0.000000, frequency_penalty = 0.000000, top_k = 40, tfs_z = 1.000000, top_p = 0.950000, typical_p = 1.000000, temp = 0.800000, mirostat = 0, mirostat_lr = 0.100000, mirostat_ent = 5.000000
-generate: n_ctx = 512, n_batch = 512, n_predict = 50, n_keep = 0
-
-
-Love relates to hate like light relates to darkness.
-Love is the strongest thing in the world, but hate is the second strongest force.
-Love is a force multiplier.
-For every moment of love, there is a parallel moment of hate.
-You can’t
-falcon_print_timings:        load time =  4420.23 ms
-falcon_print_timings:      sample time =    11.34 ms /    50 runs   (    0.23 ms per token)
-falcon_print_timings: prompt eval time =   785.42 ms /     5 tokens (  157.08 ms per token)
-falcon_print_timings:        eval time = 27512.23 ms /    49 runs   (  561.47 ms per token)
-falcon_print_timings:       total time = 28315.91 ms
-```
-
-
-Below are Falcon 7B tests:
-**Q5_1 is working, comes with ggml v3 as a bonus (mmap support)**
-```
-falcon_model_load_internal: ftype      = 9 (mostly Q5_1)
-falcon_print_timings:        load time =   952.24 ms
-falcon_print_timings:      sample time =    67.91 ms /   300 runs   (    0.23 ms per token)
-falcon_print_timings: prompt eval time =   370.94 ms /    14 tokens (   26.50 ms per token)
-falcon_print_timings:        eval time = 50367.68 ms /   299 runs   (  168.45 ms per token)
-```
-**Q4_1 is working as well**
-```
-falcon_print_timings:        load time =   864.40 ms
-falcon_print_timings:      sample time =    22.68 ms /   100 runs   (    0.23 ms per token)
-falcon_print_timings: prompt eval time =   287.00 ms /    14 tokens (   20.50 ms per token)
-falcon_print_timings:        eval time = 12233.39 ms /    99 runs   (  123.57 ms per token)
-```
-
-Q_K_*: not working (no segfaults anymore, looks like an error in qkv handling as it's outputting garbage.
