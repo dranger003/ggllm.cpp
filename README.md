@@ -59,7 +59,7 @@ export LD_LIBRARY_PATH="/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH"
 export PATH="/usr/local/cuda-12.1/bin:$PATH"
 # now start with a fresh cmake and all should work 
 ```
-
+Video tutorial for Windows compilation without WSL: https://www.youtube.com/watch?v=BALw669Qeyw  
    
 **Inference speed**  
 Only some tensors are GPU supported currently and only mul_mat operation supported
