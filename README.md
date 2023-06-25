@@ -5,6 +5,7 @@ ggllm.cpp is a llama.cpp modification to run Falcon (work in progress)
 - Fully automated GPU offloading based on available and total VRAM
 - Higher efficiency in VRAM usage when using batched processing (more layers being offloaded)
 - Improved loading screen and visualization
+- Current Falcon inference speed on consumer GPU: up to 51 tokens/sec for 7B-4bit and 17 tokens/sec for 40B-6bit
   
 **What is missing/being worked on:**
 - Full GPU offloading of Falcon
@@ -28,7 +29,7 @@ https://huggingface.co/tiiuae/falcon-7b-instruct
 _The Falcon 7B model features tensor sizes which are not yet supported by K-type quantizers - use the traditional quantization for those_  
   
 **Status/Bugs:**  
-Cummulative token slowdown over increasing context (party solved)
+- Cummulative token slowdown over increasing context (party solved)
   
 **How to compile ggllm.cpp:**
 1) Recommended with cmake: (change the CUBLAS flag to 0 to disable CUDA requirements and support)
@@ -80,44 +81,58 @@ export PATH="/usr/local/cuda-12.1/bin:$PATH"
    
 **Inference speed**  
 Only some tensors are GPU supported currently and only mul_mat operation supported
+Some of the below examples require two GPUs to run at the given speed, the settings were tailored for one environment and a different GPU/CPU/DDR setup might require adaptions  
+Using -b 1 (default) can save from 1500 up to 4800 MB of VRAM (depending on quantization type and model)
+
 **Falcon 40B 6 bit K-type quantization:**
 ```
-falcon_main.exe -t 7 -m Q:\models\falcon-40b-instruct\q6_k -n 512 -n 32  -ngl 70 --debug-timings 0 -b 1 --ignore-eos -p "I am"
+falcon_main.exe -t 2 -m Q:\models\falcon-40b-instruct\q6_k -n 512 -n 32 --debug-timings 0 -b 1 --ignore-eos -p "I am" # -ts 2,1
 ...
-falcon_print_timings:        load time = 12642.32 ms
-falcon_print_timings:      sample time =     7.18 ms /    32 runs   (    0.22 ms per token,  4458.69 tokens per second)
-falcon_print_timings:        eval time =  2270.69 ms /    33 runs   (   68.81 ms per token,    14.53 tokens per second)
-falcon_print_timings:       total time =  2281.91 ms
+falcon_print_timings:        load time = 11554.93 ms
+falcon_print_timings:      sample time =     7.54 ms /    32 runs   (    0.24 ms per token,  4244.59 tokens per second)
+falcon_print_timings:        eval time =  1968.34 ms /    33 runs   (   59.65 ms per token,    16.77 tokens per second)
+falcon_print_timings:       total time =  1980.28 ms
 ```
 
 **Falcon 40B 4 bit K-type quantization:**
 ```
-falcon_main.exe -t 7 -m Q:\models\falcon-40b\q4_k -n 512 -n 128  -ngl 70 --debug-timings 0 -b 1 --ignore-eos -p "I am"
+falcon_main.exe -t 2 -m Q:\models\falcon-40b\q4_k -n 512 -n 128 --debug-timings 0 -b 1 --ignore-eos -p "I am" # -ts 2,1
 ...
-falcon_print_timings:        load time =  8290.64 ms
-falcon_print_timings:      sample time =    28.63 ms /   128 runs   (    0.22 ms per token,  4471.46 tokens per second)
-falcon_print_timings:        eval time = 11148.03 ms /   129 runs   (   86.42 ms per token,    11.57 tokens per second)
-falcon_print_timings:       total time = 11193.44 ms
+falcon_print_timings:        load time =  8076.62 ms
+falcon_print_timings:      sample time =    29.38 ms /   128 runs   (    0.23 ms per token,  4357.15 tokens per second)
+falcon_print_timings:        eval time =  9580.33 ms /   129 runs   (   74.27 ms per token,    13.47 tokens per second)
+falcon_print_timings:       total time =  9631.29 ms
+```
+
+**Falcon 40B 4 bit K-type quantization (single 4090 24GB GPU full offload, 0MB free VRAM):**
+```
+falcon_main.exe -t 2 -m Q:\models\falcon-40b\q4_k -n 512 -n 32 -b 1 --ignore-eos -p "I am"
+...
+falcon_print_timings:        load time = 10927.17 ms
+falcon_print_timings:      sample time =     7.40 ms /    32 runs   (    0.23 ms per token,  4323.16 tokens per second)
+falcon_print_timings:        eval time =  1875.69 ms /    33 runs   (   56.84 ms per token,    17.59 tokens per second)
+falcon_print_timings:       total time =  1901.62 ms
+# this benefits from latest CUDA drivers, the 24GB are very tight. Minor VRAM swapping must be going on.
 ```
 
 **Falcon 7B 8 bit quantization:**
 ```
-falcon_main.exe -t 7 -m Q:\models\falcon-7b-instruct\q8_0 -n 512 -n 32  -ngl 70 --debug-timings 0 -b 1 --ignore-eos -p "I am"
+falcon_main.exe -t 2 -m Q:\models\falcon-7b-instruct\q8_0 -n 512 -n 32 --debug-timings 0 -b 1 --ignore-eos --override-max-gpu 1 -p "I am"
 ...
-falcon_print_timings:        load time =  2684.99 ms
-falcon_print_timings:      sample time =     7.39 ms /    32 runs   (    0.23 ms per token,  4331.35 tokens per second)
-falcon_print_timings:        eval time =   885.77 ms /    33 runs   (   26.84 ms per token,    37.26 tokens per second)
-falcon_print_timings:       total time =   897.33 ms
+falcon_print_timings:        load time =  2539.21 ms
+falcon_print_timings:      sample time =     7.65 ms /    32 runs   (    0.24 ms per token,  4181.91 tokens per second)
+falcon_print_timings:        eval time =   758.21 ms /    33 runs   (   22.98 ms per token,    43.52 tokens per second)
+falcon_print_timings:       total time =   770.52 ms
 ```
 
 **Falcon 7B 4 bit quantization:**
 ```
-falcon_main.exe -t 7 -m Q:\models\falcon-7b\q4_1 -n 512 -n 32  -ngl 70 --debug-timings 0 -b 1 --ignore-eos -p "I am"
+falcon_main.exe -t 2 -m Q:\models\falcon-7b\q4_1 -n 512 -n 32  --debug-timings 0 -b 1 --ignore-eos --override-max-gpu 1 -p "I am"
 ...
-falcon_print_timings:        load time =  2233.01 ms
-falcon_print_timings:      sample time =     7.22 ms /    32 runs   (    0.23 ms per token,  4432.13 tokens per second)
-falcon_print_timings:        eval time =   851.15 ms /    33 runs   (   25.79 ms per token,    38.77 tokens per second)
-falcon_print_timings:       total time =   862.07 ms
+falcon_print_timings:        load time =  1665.93 ms
+falcon_print_timings:      sample time =     7.65 ms /    32 runs   (    0.24 ms per token,  4184.65 tokens per second)
+falcon_print_timings:        eval time =   645.45 ms /    33 runs   (   19.56 ms per token,    51.13 tokens per second)
+falcon_print_timings:       total time =   661.19 ms
 ```
 
 CUDA sidenote:  
