@@ -1275,15 +1275,15 @@ static void falcon_model_load_internal(
             // backend_norm = LLAMA_BACKEND_OFFLOAD; // this requires REPEAT on GPU (in f7b)
             backend_norm = GGML_BACKEND_CPU; 
             backend_output = LLAMA_BACKEND_OFFLOAD_SPLIT;
+            if (model.type == FALCON_7B && n_batch > 1)
+            {
+                backend_output = LLAMA_BACKEND_OFFLOAD; // only one n_head_kv 
+            }
         } else {
             backend_norm = GGML_BACKEND_CPU;
             backend_output = GGML_BACKEND_CPU;
         }
-        if (model.type == FALCON_7B && n_batch > 1)
-        {
-            // quickfix - cuBLAS multiplication fails on lm_head for 7B
-            backend_output = GGML_BACKEND_CPU; 
-        }
+
         
         // "output" tensor
         {
