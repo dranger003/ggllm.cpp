@@ -132,8 +132,8 @@ int main(int argc, char ** argv) {
     // print system information
     {
         fprintf(stderr, "\n");
-        fprintf(stderr, "system_info: n_threads = %d / %d | %s\n",
-                params.n_threads, std::thread::hardware_concurrency(), falcon_print_system_info());
+        fprintf(stderr, "%s\n",
+                 falcon_print_system_info(params.n_threads, std::thread::hardware_concurrency()));
     }
 
     // determine the maximum memory usage needed to do inference for the given n_batch and n_predict parameters
@@ -305,9 +305,26 @@ int main(int argc, char ** argv) {
             fprintf(stderr, "Input suffix: '%s'\n", params.input_suffix.c_str());
         }
     }
-    fprintf(stderr, "sampling: repeat_last_n = %d, repeat_penalty = %f, presence_penalty = %f, frequency_penalty = %f, top_k = %d, tfs_z = %f, top_p = %f, typical_p = %f, temp = %f, mirostat = %d, mirostat_lr = %f, mirostat_ent = %f\n",
-            params.repeat_last_n, params.repeat_penalty, params.presence_penalty, params.frequency_penalty, params.top_k, params.tfs_z, params.top_p, params.typical_p, params.temp, params.mirostat, params.mirostat_eta, params.mirostat_tau);
-    fprintf(stderr, "generate: n_ctx = %d, n_batch = %d, n_predict = %d, n_keep = %d\n", n_ctx, params.n_batch, params.n_predict, params.n_keep);
+
+fprintf(stderr, "+------------+-------+-------+-------+-------+-------+-------+-------+-------+------+------+--------+---------+\n");
+fprintf(stderr, "| %10s | %5s | %4s | %4s | %4s | %4s | %4s | %4s | %4s | %4s | %4s | %4s | %4s |\n", 
+                "Sampling","rpt_n","rpt_p","prs_p","frq_p","top_k","tfs_z", "top_p", "typ_p", "temp", "miro", "mir_lr", "mir_ent");
+fprintf(stderr, "+------------+-------+-------+-------+-------+-------+-------+-------+-------+------+------+--------+---------+\n");
+fprintf(stderr, "|            | %5d | %.3f | %.3f | %.3f | %5d | %.3f | %.3f | %.3f | %.2f | %4d | %.4f | %.5f |\n", 
+                params.repeat_last_n, params.repeat_penalty, params.presence_penalty, params.frequency_penalty, params.top_k, params.tfs_z, params.top_p, params.typical_p, params.temp, params.mirostat, params.mirostat_eta, params.mirostat_tau);
+fprintf(stderr, "+============+=======+=======+=======+=======+=======+-------+-------+-------+------+------+--------+---------+\n");
+// fprintf(stderr, "+------------+---------+----------+--------+--------+\n");
+fprintf(stderr, "| %10s | %7s | %8s | %6s | %6s |\n", 
+                "Generation", "n_ctx", "n_batch", "n_keep","prompt");
+fprintf(stderr, "+------------+---------+----------+--------+--------+\n");
+fprintf(stderr, "|            | %7d | %8d | %6d | %6zu |\n",
+                n_ctx, params.n_batch, params.n_keep, embd_inp.size());
+fprintf(stderr, "+------------+---------+----------+--------+--------+\n");
+
+    if (n_ctx < (int)(params.n_predict + embd_inp.size())) {
+        fprintf(stderr, "%s: Warning: context is smaller than expected generation, will cause delays\n", __func__);
+    }
+
     fprintf(stderr, "\n\n");
 
     // TODO: replace with ring-buffer
@@ -317,10 +334,10 @@ int main(int argc, char ** argv) {
     if (params.interactive) {
         const char *control_message;
         if (con_st.multiline_input) {
-            control_message = " - To return control to LLaMa, end your input with '\\'.\n"
+            control_message = " - To return control to ggLLM, end your input with '\\'.\n"
                               " - To return control without starting a new line, end your input with '/'.\n";
         } else {
-            control_message = " - Press Return to return control to LLaMa.\n"
+            control_message = " - Press Return to return control to ggLLM.\n"
                               " - To return control without starting a new line, end your input with '/'.\n"
                               " - If you want to submit another line, end your input with '\\'.\n";
         }

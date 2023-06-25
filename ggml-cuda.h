@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 #define GGML_CUDA_MAX_DEVICES       16
+#define D_MB                           (1024*1024)
 
 struct ggml_tensor_extra_gpu {
     void * data_device[GGML_CUDA_MAX_DEVICES]; // 1 pointer for each device for split tensors
@@ -18,29 +19,22 @@ typedef struct {
     int main_device_id;
     size_t total_vram;
     size_t total_free_vram;
-    struct cudaDeviceProp device_props[GGML_CUDA_MAX_DEVICES];
     size_t device_vram_free[GGML_CUDA_MAX_DEVICES];
     size_t device_vram_total[GGML_CUDA_MAX_DEVICES];
+    size_t device_vram_reserved[GGML_CUDA_MAX_DEVICES]; // overrides reserved vram
+    struct cudaDeviceProp device_props[GGML_CUDA_MAX_DEVICES];
+
 } GPUStatus;
-static const GPUStatus DEFAULT_SYSTEM_GPU_STATUS =
-{
-    /* max_gpus */ GGML_CUDA_MAX_DEVICES,
-    /* num_devices */ 0,
-    /* main_device_id */ 0,
-    /* total_vram */ 0,
-    /* total_free_vram */ 0,
-    /* device_props */ { 0 },
-    /* device_vram_free */ { 0 },
-    /* device_vram_total */ { 0 }
-};
+
 
 
 const GPUStatus* ggml_cuda_get_system_gpu_status(void);
 
 void   ggml_init_cublas(void);
 void   ggml_cuda_update_gpu_status(int device_id);
-void   ggml_cuda_print_gpu_status(const GPUStatus *status);
+void   ggml_cuda_print_gpu_status(const GPUStatus *status, bool print_summary);
 void   ggml_cuda_set_max_gpus(int max_gpus);
+void   ggml_cuda_set_vram_reserved(size_t vram_reserved);
 void   ggml_cuda_set_tensor_split_prepare(const float * tensor_split, int num_devices);
 void   ggml_cuda_set_tensor_split(const float * tensor_split);
 

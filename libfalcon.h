@@ -300,7 +300,7 @@ extern "C" {
     LLAMA_API void llama_reset_timings(struct falcon_context * ctx);
 
     // Print system information
-    LLAMA_API const char * falcon_print_system_info(void);
+    LLAMA_API const char * falcon_print_system_info(int n_threads, int n_cores);
 
 #ifdef __cplusplus
 }

@@ -95,6 +95,10 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
     gpt_params default_params;
     const std::string arg_prefix = "--";
 
+    #if defined(GGML_USE_CUBLAS)
+        ggml_cuda_set_max_gpus(LLAMA_MAX_DEVICES); // default
+    #endif
+
     for (int i = 1; i < argc; i++) {
         arg = argv[i];
         if (arg.compare(0, arg_prefix.size(), arg_prefix) == 0) {
@@ -292,40 +296,61 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
                 invalid_param = true;
                 break;
             }
-#ifdef LLAMA_SUPPORTS_GPU_OFFLOAD
+            #ifdef LLAMA_SUPPORTS_GPU_OFFLOAD
             params.n_gpu_layers = std::stoi(argv[i]);
-#else
+            #else
             fprintf(stderr, "warning: not compiled with GPU offload support, --n-gpu-layers option will be ignored\n");
             fprintf(stderr, "warning: see main README.md for information on enabling GPU BLAS support\n");
-#endif
+            #endif
         } else if (arg == "--main-gpu" || arg == "-mg") {
             if (++i >= argc) {
                 invalid_param = true;
                 break;
             }
-#ifdef GGML_USE_CUBLAS
+            #ifdef GGML_USE_CUBLAS
             params.main_gpu = std::stoi(argv[i]);
             ggml_cuda_set_main_device(params.main_gpu);
-#else
-      fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. It is not possible to set a main GPU.\n");
-#endif
+            #else
+            fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. It is not possible to set a main GPU.\n");
+            #endif
         } else if (arg == "--override-max-gpu") {
             if (++i >= argc) {
                 invalid_param = true;
                 break;
             }
-#ifdef GGML_USE_CUBLAS
+            #ifdef GGML_USE_CUBLAS
             params.n_max_gpu = std::stoi(argv[i]);
             ggml_cuda_set_max_gpus(params.n_max_gpu);
-#else
-      fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. It is not possible to set a main GPU.\n");
-#endif
-        } else if (arg == "--tensor-split" || arg == "-ts") {
+            #else
+            fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. It is not possible limit GPU devices.\n");
+            #endif
+        } else if (arg == "--gpu-reserve-mb-main") {
             if (++i >= argc) {
                 invalid_param = true;
                 break;
             }
-#ifdef GGML_USE_CUBLAS
+            #ifdef GGML_USE_CUBLAS
+            params.mb_reserve_gpu_main = std::stoi(argv[i]);
+            ggml_cuda_set_vram_reserved((size_t)params.mb_reserve_gpu_main * 1024*1024);
+            #else
+            fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. VRAM not available.\n");
+            #endif
+        } /*else if (arg == "--gpu-reserve-mb-other") {
+            if (++i >= argc) {
+                invalid_param = true;
+                break;
+            }
+            #ifdef GGML_USE_CUBLAS
+            params.mb_reserve_gpu_other = std::stoi(argv[i]);
+            #else
+            fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. VRAM not available.\n");
+            #endif
+        } */else if (arg == "--tensor-split" || arg == "-ts") {
+            if (++i >= argc) {
+                invalid_param = true;
+                break;
+            }
+            #ifdef GGML_USE_CUBLAS
             std::string arg_next = argv[i];
 
             // split string by , and /
@@ -349,9 +374,9 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
                 exit(1);
             }
             ggml_cuda_set_tensor_split_prepare(params.tensor_split, static_cast<int>(split_arg.size()));
-#else
-      fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. It is not possible to set a tensor split.\n");
-#endif // GGML_USE_CUBLAS
+            #else
+            fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. It is not possible to set a tensor split.\n");
+            #endif // GGML_USE_CUBLAS
         } else if (arg == "--no-mmap") {
             params.use_mmap = false;
         } else if (arg == "--mtest") {
@@ -522,6 +547,8 @@ void gpt_print_usage(int /*argc*/, char ** argv, const gpt_params & params) {
     fprintf(stderr, "  -mg i, --main-gpu i   the GPU to use for scratch and small tensors (0 = first)\n" );
     fprintf(stderr, "  --override-max-gpu N\n");
     fprintf(stderr, "                        limits the number of GPUs visible (allows to disable multi/single GPU processing)\n");
+    fprintf(stderr, "  --gpu-reserve-mb-main override reserved VRAM MB for main GPU (defaults to first GPU)\n");
+    //fprintf(stderr, "  --gpu_reserve_mb_other override reserved VRAM MB for other GPUs (for multi GPU systems)\n");
 #endif
     fprintf(stderr, "  --mtest               compute maximum memory usage\n");
     fprintf(stderr, "  --export              export the computation graph to 'llama.ggml'\n");

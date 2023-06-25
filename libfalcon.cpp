@@ -512,7 +512,7 @@ struct falcon_file_loader {
     void read_vocab() {
         vocab.id_to_token.resize(hparams.n_vocab);
 
-        for (uint32_t i = 0; i < hparams.n_vocab; i++) {
+        for (uint32_t i = 0; i < (uint32_t)hparams.n_vocab; i++) {
             uint32_t len = file.read_u32();
             std::string word = file.read_string(len);
 
@@ -1013,11 +1013,11 @@ int64_t llama_time_us() {
 
 static const char *llama_file_version_name(llama_file_version version) {
     switch (version) {
-        case LLAMA_FILE_VERSION_GGML: return "'ggml' (old version with low tokenizer quality and no mmap support)";
-        case LLAMA_FILE_VERSION_GGMF_V1: return "ggmf v1 (old version with no mmap support)";
-        case LLAMA_FILE_VERSION_GGJT_V1: return "ggjt v1 (pre #1405)";
-        case LLAMA_FILE_VERSION_GGJT_V2: return "ggjt v2 (pre #1508)";
-        case LLAMA_FILE_VERSION_GGJT_V3: return "ggjt v3 (latest)";
+        case LLAMA_FILE_VERSION_GGML: return "'ggml v0'";
+        case LLAMA_FILE_VERSION_GGMF_V1: return "ggml v1";
+        case LLAMA_FILE_VERSION_GGJT_V3: return "ggml v3";
+        default: 
+        break;
     }
 
     return "unknown";
@@ -1132,26 +1132,13 @@ static void falcon_model_load_internal(
     const uint32_t n_ff = 4 * model.hparams.n_embd;
 
     {
-        fprintf(stderr, "%s: format     = %s\n",  __func__, llama_file_version_name(file_version));
-        fprintf(stderr, "%s: n_vocab    = %u\n",  __func__, hparams.n_vocab);
-        fprintf(stderr, "%s: n_ctx      = %u\n",  __func__, hparams.n_ctx);
-        fprintf(stderr, "%s: n_embd     = %u\n",  __func__, hparams.n_embd);
-        fprintf(stderr, "%s: n_head     = %u\n",  __func__, hparams.n_head);
-        fprintf(stderr, "%s: n_head_kv     = %u\n",  __func__, hparams.n_head_kv);
-        fprintf(stderr, "%s: n_layer    = %u\n",  __func__, hparams.n_layer);
-        fprintf(stderr, "%s: n_falcon_type      = %u\n",  __func__, hparams.n_falcon_type);
-        fprintf(stderr, "%s: ftype      = %u (%s)\n", __func__, hparams.ftype, llama_ftype_name(hparams.ftype));
-        fprintf(stderr, "%s: n_ff       = %u\n",  __func__, n_ff);
-        fprintf(stderr, "%s: n_parts    = %zu\n", __func__, ml->file_loaders.size());
-        fprintf(stderr, "%s: model size = %s\n",  __func__, falcon_model_type_name(model.type));
-    }
-
-    if (file_version < LLAMA_FILE_VERSION_GGJT_V2) {
-        if (hparams.ftype != LLAMA_FTYPE_ALL_F32     &&
-            hparams.ftype != LLAMA_FTYPE_MOSTLY_F16  &&
-            hparams.ftype != LLAMA_FTYPE_MOSTLY_Q8_0) {
-            throw std::runtime_error(format("this format is no longer supported (see https://github.com/ggerganov/llama.cpp/pull/1405)"));
-        }
+        fprintf(stderr, "+---------------+------------+---------+-------+--------+---------------+---------+--------+-------+--------+\n");
+        fprintf(stderr, "| %13s | %10s | %7s | %5s | %6s | %13s | %7s | %6s | %5s | %6s |\n",
+                "Info", "format", "n_vocab", "n_ctx", "n_embd", "n_head ; kv", "n_layer", "falcon", "ftype", "n_ff");
+        fprintf(stderr, "+---------------+------------+---------+-------+--------+---------------+---------+--------+-------+--------+\n");
+        fprintf(stderr, "|               | %10s | %7u | %5u | %6u | %7u ; %3u | %7u | %2u;%3s | %5u | %6u |\n",
+                llama_file_version_name(file_version), hparams.n_vocab, hparams.n_ctx, hparams.n_embd, hparams.n_head, hparams.n_head_kv, hparams.n_layer, hparams.n_falcon_type,falcon_model_type_name(model.type), hparams.ftype, n_ff);
+        fprintf(stderr, "+---------------+------------+---------+-------+--------+---------------+---------+--------+-------+--------+\n");
     }
 
     if (file_version < LLAMA_FILE_VERSION_GGJT_V3) {
@@ -1211,29 +1198,53 @@ static void falcon_model_load_internal(
 #endif
 
     
-    const size_t vram_reserved=512*MB;    // that amount of VRAM is to stay free on GPU (needs to become a user parameter)
-    size_t vram_overhead = 1250*MB; // this amount of vram is estimated for non weight storage buffers on VRAM
+    size_t vram_reserved=128*MB;    // that amount of VRAM is to stay free on GPU (needs to become a user parameter)
+    size_t vram_overhead = 256*MB;    // this amount of vram is estimated for non weight storage buffers on VRAM
     size_t vram_free = 0; // for vram simulation below
     size_t vram_total = 0; // for vram simulation below
 #if defined(GGML_USE_CUBLAS)
+    vram_overhead=0; 
     ggml_cuda_update_gpu_status(-1);
     const GPUStatus *system_gpu_status = ggml_cuda_get_system_gpu_status();
     vram_free = system_gpu_status->total_free_vram;
     vram_total = system_gpu_status->total_vram;
+    if (system_gpu_status->device_vram_reserved[main_gpu] != 0)
+    {
+        vram_reserved = system_gpu_status->device_vram_reserved[main_gpu];
+    }
     // cublas is used in 32 bit mode, temporary cuda storage/conversion buffers are needed for batch ingestion ( could be run in 16 bit mode without performance downgrade and save half the VRAM)
 
     if (system_gpu_status->num_devices > 0)
     {
         fprintf(stderr, "%s: VRAM free: %7.2f MB  of %7.2f MB (in use: %7.2f MB)\n", __func__, system_gpu_status->total_free_vram/MB*1.0, system_gpu_status->total_vram/MB*1.0, (system_gpu_status->total_vram-system_gpu_status->total_free_vram)/MB*1.0);
+
         if (model.type == FALCON_40B && n_batch > 1)
         {
-            vram_overhead += (1024 + 288 + 256) * MB; // todo: when can manually create one 1024 buffer manually, saves 500+mb vram
-            fprintf(stderr, "%s: INFO: using n_batch > 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
+            if (model.hparams.ftype != LLAMA_FTYPE_ALL_F32)
+            {
+
+            } else if (model.hparams.ftype == LLAMA_FTYPE_MOSTLY_Q8_0)
+            {
+                // vram_overhead += (1024 + 288 + 256) * MB; // todo: when can manually create one 1024 buffer manually, saves 500+mb vram
+                vram_overhead += 2900*MB;
+            } else if (model.hparams.ftype >= 10) 
+            {
+                vram_overhead += 4000*MB; // all k type
+            } else
+                vram_overhead += 4500*MB; // all non k type
+            fprintf(stderr, "%s: INFO: using n_batch larger than 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
         }
         if (model.type == FALCON_7B && n_batch > 1)
         {
-            vram_overhead += (315 + 80 + 78) * MB; // todo: manually create a 315mb buffer, saves 160mb vram
-            fprintf(stderr, "%s: INFO: using n_batch > 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
+            //vram_overhead += (315 + 80 + 78) * MB; // todo: manually create a 315mb buffer, saves 160mb vram
+            if (model.hparams.ftype != LLAMA_FTYPE_ALL_F32)
+            {
+
+            } else if (model.hparams.ftype == LLAMA_FTYPE_MOSTLY_Q8_0)
+            {
+                vram_overhead += 1700*MB; // 1500-1700  (k type does not exist yet)
+            }
+            fprintf(stderr, "%s: INFO: using n_batch larger than 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
         }
     } else
     {
@@ -1280,7 +1291,9 @@ static void falcon_model_load_internal(
         // output layer offloading is on by default now, it's one of the biggest CPU consumers
         bool offload_output = true;
         if (n_gpu_layers == 0) offload_output = false;
+        #ifdef GGML_USE_CUBLAS
         if (system_gpu_status->num_devices == 0) offload_output = false;
+        #endif
 
         if (offload_output) { // NOLINT
             // backend_norm = LLAMA_BACKEND_OFFLOAD; // this requires REPEAT on GPU (in f7b)
@@ -1323,6 +1336,7 @@ static void falcon_model_load_internal(
 
         int i_gpu_last = n_layer; // allows to terminate the offloading earlier. TODO: instead do a proper calculation run and determine the start before the loop
 
+        #ifdef GGML_USE_CUBLAS
         if (system_gpu_status->num_devices == 0)
         {
             i_gpu_start = 999;
@@ -1330,6 +1344,7 @@ static void falcon_model_load_internal(
             n_gpu_layers = 0;
             model.n_gpu_layers = 0;
         }
+        #endif
 
         model.i_gpu_start = i_gpu_start;
         model.i_gpu_last = i_gpu_last; // if VRAM doesn't run out i_gpu_last is always the last layer
@@ -1449,6 +1464,7 @@ static void falcon_model_load_internal(
     #if defined(GGML_USE_CUBLAS)
     //size_t vram_free_simulated = vram_free;
     ggml_cuda_update_gpu_status(-1);
+    system_gpu_status = ggml_cuda_get_system_gpu_status();
     vram_free = system_gpu_status->total_free_vram;
     vram_total= system_gpu_status->total_vram;
     fprintf(stderr, "%s: VRAM free: %7.2f MB  of %7.2f MB (used: %7.2f MB)\n", __func__, vram_free/MB*1.0, vram_total/MB*1.0, (vram_total-vram_free)/MB*1.0);
@@ -3557,9 +3573,7 @@ int falcon_eval(
         fprintf(stderr, "%s: failed to eval\n", __func__);
         return 1;
     }
-
-    // get a more accurate load time, upon first eval
-    // TODO: fix this
+    //ggml_cuda_update_gpu_status(-1); ggml_cuda_print_gpu_status(ggml_cuda_get_system_gpu_status(),true);
     if (!ctx->has_evaluated_once) {
         ctx->t_load_us = ggml_time_us() - ctx->t_start_us;
         ctx->has_evaluated_once = true;
@@ -3682,28 +3696,35 @@ void llama_reset_timings(struct falcon_context * ctx) {
     ctx->t_p_eval_us = ctx->n_p_eval = 0;
 }
 
-const char * falcon_print_system_info(void) {
+const char * falcon_print_system_info(int n_threads, int n_cores) {
     static std::string s;
 
-    s  = "";
-    s += "AVX = "         + std::to_string(ggml_cpu_has_avx())         + " | ";
-    s += "AVX2 = "        + std::to_string(ggml_cpu_has_avx2())        + " | ";
-    s += "AVX512 = "      + std::to_string(ggml_cpu_has_avx512())      + " | ";
-    s += "AVX512_VBMI = " + std::to_string(ggml_cpu_has_avx512_vbmi()) + " | ";
-    s += "AVX512_VNNI = " + std::to_string(ggml_cpu_has_avx512_vnni()) + " | ";
-    s += "FMA = "         + std::to_string(ggml_cpu_has_fma())         + " | ";
-    s += "NEON = "        + std::to_string(ggml_cpu_has_neon())        + " | ";
-    s += "ARM_FMA = "     + std::to_string(ggml_cpu_has_arm_fma())     + " | ";
-    s += "F16C = "        + std::to_string(ggml_cpu_has_f16c())        + " | ";
-    s += "FP16_VA = "     + std::to_string(ggml_cpu_has_fp16_va())     + " | ";
-    s += "WASM_SIMD = "   + std::to_string(ggml_cpu_has_wasm_simd())   + " | ";
-    s += "BLAS = "        + std::to_string(ggml_cpu_has_blas())        + " | ";
-    s += "SSE3 = "        + std::to_string(ggml_cpu_has_sse3())        + " | ";
-    s += "VSX = "         + std::to_string(ggml_cpu_has_vsx())         + " | ";
+    s  = "+---------------+-----+------+--------+-------------+-------------+-----+------+---------+------+---------+------+------+------+-----+\n";
+    s += "|  System Info  | AVX | AVX2 | AVX512 | AVX512_VBMI | AVX512_VNNI | FMA | NEON | ARM_FMA | F16C | FP16_VA | SIMD | BLAS | SSE3 | VSX |\n";
+    s += "+---------------+-----+------+--------+-------------+-------------+-----+------+---------+------+---------+------+------+------+-----+\n";
+    //s += "|              | ";
+    // instead we write threads: x/x (we have 14 chars, we need to use a formatstring to keep length):
+    char buf[20];
+    snprintf(buf, sizeof(buf), "| %2d/%2d threads | ", n_threads, n_cores);
+    s += buf;
+    s += std::to_string(ggml_cpu_has_avx()) + "   | ";
+    s += std::to_string(ggml_cpu_has_avx2()) + "    | ";
+    s += std::to_string(ggml_cpu_has_avx512()) + "      | ";
+    s += std::to_string(ggml_cpu_has_avx512_vbmi()) + "           | ";
+    s += std::to_string(ggml_cpu_has_avx512_vnni()) + "           | ";
+    s += std::to_string(ggml_cpu_has_fma()) + "   | ";
+    s += std::to_string(ggml_cpu_has_neon()) + "    | ";
+    s += std::to_string(ggml_cpu_has_arm_fma()) + "       | ";
+    s += std::to_string(ggml_cpu_has_f16c()) + "    | ";
+    s += std::to_string(ggml_cpu_has_fp16_va()) + "       | ";
+    s += std::to_string(ggml_cpu_has_wasm_simd()) + "    | ";
+    s += std::to_string(ggml_cpu_has_blas()) + "    | ";
+    s += std::to_string(ggml_cpu_has_sse3()) + "    | ";
+    s += std::to_string(ggml_cpu_has_vsx()) + "   |\n";
+    s += "+---------------+-----+------+--------+-------------+-------------+-----+------+---------+------+---------+------+------+------+-----+\n";
 
     return s.c_str();
 }
-
 // For internal test use
 std::vector<std::pair<std::string, struct ggml_tensor *>>& llama_internal_get_tensor_map(struct falcon_context * ctx) {
     return ctx->model.tensors_by_name;
