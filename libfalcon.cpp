@@ -1279,7 +1279,7 @@ static void falcon_model_load_internal(
             backend_norm = GGML_BACKEND_CPU;
             backend_output = GGML_BACKEND_CPU;
         }
-        if (model.type == FALCON_7B)
+        if (model.type == FALCON_7B && n_batch > 1)
         {
             // quickfix - cuBLAS multiplication fails on lm_head for 7B
             backend_output = GGML_BACKEND_CPU; 
