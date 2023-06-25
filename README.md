@@ -59,7 +59,9 @@ export LD_LIBRARY_PATH="/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH"
 export PATH="/usr/local/cuda-12.1/bin:$PATH"
 # now start with a fresh cmake and all should work 
 ```
-Video tutorial for Windows compilation without WSL: https://www.youtube.com/watch?v=BALw669Qeyw  
+Video tutorial for Windows compilation without WSL: https://www.youtube.com/watch?v=BALw669Qeyw    
+Another demo of Falcon 40B at 5 bit quantization: https://www.youtube.com/watch?v=YuTMFL1dKgQ&ab_channel=CmpNct  
+The speed can be seen at 35 tokens/sec start gradually lowering over context - that's still a implementation problem being worked on.
    
 **Inference speed**  
 Only some tensors are GPU supported currently and only mul_mat operation supported
