@@ -1,4 +1,5 @@
 ggllm.cpp is a llama.cpp modification to run Falcon (work in progress)
+INFO: If Falcon 7B outputs gibberish on CUDA use "-b 1". Problem will be fixed tomorrow 
 
 **The Bloke features fine tuned weights in ggml v3 with various quantization options:**  
 https://huggingface.co/TheBloke/falcon-40b-instruct-GGML  
