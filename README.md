@@ -1,5 +1,14 @@
 ggllm.cpp is a llama.cpp modification to run Falcon (work in progress)
-INFO: If Falcon 7B outputs gibberish on CUDA use "-b 1". Problem will be fixed tomorrow 
+
+**Features that differentiate from llama.cpp for now:**
+- Support for Falcon 7B and 40B models (inference, quantization and perplexity tool)
+- Fully automated GPU offloading based on available and total VRAM
+- Higher efficiency in VRAM usage when using batched processing (more layers being offloaded)
+- Improved loading screen and visualization
+  
+**What is missing/being worked on:**
+- Full GPU offloading of Falcon
+- better quantization options for Falcon
 
 **The Bloke features fine tuned weights in ggml v3 with various quantization options:**  
 https://huggingface.co/TheBloke/falcon-40b-instruct-GGML  
@@ -43,6 +52,13 @@ export LLAMA_CUBLAS=1;
 make falcon_main falcon_quantize falcon_perplexity
 ```
 
+**Windows and Demos**
+Video tutorial for Windows compilation without WSL:  
+https://www.youtube.com/watch?v=BALw669Qeyw     
+Another demo of Falcon 40B at 5 bit quantization:  
+https://www.youtube.com/watch?v=YuTMFL1dKgQ&ab_channel=CmpNct   
+The speed can be seen at 35 tokens/sec start gradually lowering over context - that's still a implementation problem being worked on.
+
 3) Installing on WSL (Windows Subsystem for Linux)
 ```
 # Use --no-mmap in WSL OR copy the model into a native directory (not /mnt/) or it will get stuck loading (thanks @nauful)
@@ -60,9 +76,7 @@ export LD_LIBRARY_PATH="/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH"
 export PATH="/usr/local/cuda-12.1/bin:$PATH"
 # now start with a fresh cmake and all should work 
 ```
-Video tutorial for Windows compilation without WSL: https://www.youtube.com/watch?v=BALw669Qeyw    
-Another demo of Falcon 40B at 5 bit quantization: https://www.youtube.com/watch?v=YuTMFL1dKgQ&ab_channel=CmpNct  
-The speed can be seen at 35 tokens/sec start gradually lowering over context - that's still a implementation problem being worked on.
+
    
 **Inference speed**  
 Only some tensors are GPU supported currently and only mul_mat operation supported
