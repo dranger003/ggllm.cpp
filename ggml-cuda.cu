@@ -1508,7 +1508,7 @@ static size_t g_scratch_offset = 0;
 
 // Note: tensor_split defines the breakpoints of tensors that can be split {0,0.5}
 static float g_tensor_split[GGML_CUDA_MAX_DEVICES] = {0};
-static GPUStatus g_system_gpu_status;
+static GPUStatus g_system_gpu_status = DEFAULT_SYSTEM_GPU_STATUS;
 
 static cublasHandle_t g_cublas_handles[GGML_CUDA_MAX_DEVICES] = {nullptr};
 
@@ -1531,6 +1531,9 @@ void ggml_cuda_update_gpu_status(int device_id) {
                 g_system_gpu_status.num_devices = GGML_CUDA_MAX_DEVICES;
                 fprintf(stderr, "WARNING: GGML_CUDA_MAX_DEVICES is smaller than the number of devices on the system. Using first %d devices.\n", GGML_CUDA_MAX_DEVICES);
             }
+            if (g_system_gpu_status.num_devices > g_system_gpu_status.max_gpus)
+                    g_system_gpu_status.num_devices = g_system_gpu_status.max_gpus;
+                
             g_system_gpu_status.total_vram = 0;
             for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
                 CUDA_CHECK(cudaGetDeviceProperties(&g_system_gpu_status.device_props[id], id));
@@ -1611,6 +1614,9 @@ void ggml_cuda_print_gpu_status(const GPUStatus *status) {
 
 const GPUStatus* ggml_cuda_get_system_gpu_status(void) {
     return &g_system_gpu_status;
+}
+void ggml_cuda_set_max_gpus(int max_gpus) {
+    g_system_gpu_status.max_gpus = max_gpus;
 }
 
 void ggml_init_cublas() {

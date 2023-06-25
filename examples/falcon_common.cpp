@@ -309,6 +309,17 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
 #else
       fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. It is not possible to set a main GPU.\n");
 #endif
+        } else if (arg == "--override-max-gpu") {
+            if (++i >= argc) {
+                invalid_param = true;
+                break;
+            }
+#ifdef GGML_USE_CUBLAS
+            params.n_max_gpu = std::stoi(argv[i]);
+            ggml_cuda_set_max_gpus(params.n_max_gpu);
+#else
+      fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. It is not possible to set a main GPU.\n");
+#endif
         } else if (arg == "--tensor-split" || arg == "-ts") {
             if (++i >= argc) {
                 invalid_param = true;
@@ -505,10 +516,12 @@ void gpt_print_usage(int /*argc*/, char ** argv, const gpt_params & params) {
     }
 #ifdef LLAMA_SUPPORTS_GPU_OFFLOAD
     fprintf(stderr, "  -ngl N, --n-gpu-layers N\n");
-    fprintf(stderr, "                        number of layers to store in VRAM\n");
+    fprintf(stderr, "                        number of layers to store in VRAM, default is to fill VRAM \n");
     fprintf(stderr, "  -ts SPLIT --tensor-split SPLIT\n");
     fprintf(stderr, "                        how to split tensors across multiple GPUs, comma-separated list of proportions, e.g. 3,1\n");
-    fprintf(stderr, "  -mg i, --main-gpu i   the GPU to use for scratch and small tensors\n" );
+    fprintf(stderr, "  -mg i, --main-gpu i   the GPU to use for scratch and small tensors (0 = first)\n" );
+    fprintf(stderr, "  --override-max-gpu N\n");
+    fprintf(stderr, "                        limits the number of GPUs visible (allows to disable multi/single GPU processing)\n");
 #endif
     fprintf(stderr, "  --mtest               compute maximum memory usage\n");
     fprintf(stderr, "  --export              export the computation graph to 'llama.ggml'\n");

@@ -1221,17 +1221,27 @@ static void falcon_model_load_internal(
     vram_free = system_gpu_status->total_free_vram;
     vram_total = system_gpu_status->total_vram;
     // cublas is used in 32 bit mode, temporary cuda storage/conversion buffers are needed for batch ingestion ( could be run in 16 bit mode without performance downgrade and save half the VRAM)
-    if (model.type == FALCON_40B && n_batch > 1)
+
+    if (system_gpu_status->num_devices > 0)
     {
-        vram_overhead += (1024 + 288 + 256) * MB; // todo: when can manually create one 1024 buffer manually, saves 500+mb vram
-        fprintf(stderr, "%s: INFO: using n_batch > 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
-    }
-    if (model.type == FALCON_7B && n_batch > 1)
+        fprintf(stderr, "%s: VRAM free: %7.2f MB  of %7.2f MB (in use: %7.2f MB)\n", __func__, system_gpu_status->total_free_vram/MB*1.0, system_gpu_status->total_vram/MB*1.0, (system_gpu_status->total_vram-system_gpu_status->total_free_vram)/MB*1.0);
+        if (model.type == FALCON_40B && n_batch > 1)
+        {
+            vram_overhead += (1024 + 288 + 256) * MB; // todo: when can manually create one 1024 buffer manually, saves 500+mb vram
+            fprintf(stderr, "%s: INFO: using n_batch > 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
+        }
+        if (model.type == FALCON_7B && n_batch > 1)
+        {
+            vram_overhead += (315 + 80 + 78) * MB; // todo: manually create a 315mb buffer, saves 160mb vram
+            fprintf(stderr, "%s: INFO: using n_batch > 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
+        }
+    } else
     {
-        vram_overhead += (315 + 80 + 78) * MB; // todo: manually create a 315mb buffer, saves 160mb vram
-        fprintf(stderr, "%s: INFO: using n_batch > 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
+        printf("%s: WARNING: no CUDA devices found, falling back to CPU\n", __func__);
     }
-    fprintf(stderr, "%s: VRAM free: %7.2f MB  of %7.2f MB (in use: %7.2f MB)\n", __func__, system_gpu_status->total_free_vram/MB*1.0, system_gpu_status->total_vram/MB*1.0, (system_gpu_status->total_vram-system_gpu_status->total_free_vram)/MB*1.0);
+    
+    
+
 #endif
 
     // prepare memory for the weights
@@ -1270,6 +1280,7 @@ static void falcon_model_load_internal(
         // output layer offloading is on by default now, it's one of the biggest CPU consumers
         bool offload_output = true;
         if (n_gpu_layers == 0) offload_output = false;
+        if (system_gpu_status->num_devices == 0) offload_output = false;
 
         if (offload_output) { // NOLINT
             // backend_norm = LLAMA_BACKEND_OFFLOAD; // this requires REPEAT on GPU (in f7b)
@@ -1311,8 +1322,18 @@ static void falcon_model_load_internal(
 
 
         int i_gpu_last = n_layer; // allows to terminate the offloading earlier. TODO: instead do a proper calculation run and determine the start before the loop
+
+        if (system_gpu_status->num_devices == 0)
+        {
+            i_gpu_start = 999;
+            i_gpu_last = -1;
+            n_gpu_layers = 0;
+            model.n_gpu_layers = 0;
+        }
+
         model.i_gpu_start = i_gpu_start;
         model.i_gpu_last = i_gpu_last; // if VRAM doesn't run out i_gpu_last is always the last layer
+
 
         model.layers.resize(n_layer);
         for (uint32_t i = 0; i < n_layer; ++i) {
