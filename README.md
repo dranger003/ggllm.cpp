@@ -29,7 +29,7 @@ https://huggingface.co/tiiuae/falcon-7b-instruct
 _The Falcon 7B model features tensor sizes which are not yet supported by K-type quantizers - use the traditional quantization for those_  
   
 **Status/Bugs:**  
-Cummulative token slowdown over increasing context (party solved)
+- Cummulative token slowdown over increasing context (party solved)
   
 **How to compile ggllm.cpp:**
 1) Recommended with cmake: (change the CUBLAS flag to 0 to disable CUDA requirements and support)
@@ -82,6 +82,7 @@ export PATH="/usr/local/cuda-12.1/bin:$PATH"
 **Inference speed**  
 Only some tensors are GPU supported currently and only mul_mat operation supported
 Some of the below examples require two GPUs to run at the given speed, the settings were tailored for one environment and a different GPU/CPU/DDR setup might require adaptions  
+Using -b 1 (default) can save from 1500 up to 4800 MB of VRAM (depending on quantization type and model)
 
 **Falcon 40B 6 bit K-type quantization:**
 ```
@@ -101,6 +102,17 @@ falcon_print_timings:        load time =  8076.62 ms
 falcon_print_timings:      sample time =    29.38 ms /   128 runs   (    0.23 ms per token,  4357.15 tokens per second)
 falcon_print_timings:        eval time =  9580.33 ms /   129 runs   (   74.27 ms per token,    13.47 tokens per second)
 falcon_print_timings:       total time =  9631.29 ms
+```
+
+**Falcon 40B 4 bit K-type quantization (single 4090 24GB GPU full offload, 0MB free VRAM):**
+```
+falcon_main.exe -t 2 -m Q:\models\falcon-40b\q4_k -n 512 -n 32 -b 1 --ignore-eos -p "I am"
+...
+falcon_print_timings:        load time = 10927.17 ms
+falcon_print_timings:      sample time =     7.40 ms /    32 runs   (    0.23 ms per token,  4323.16 tokens per second)
+falcon_print_timings:        eval time =  1875.69 ms /    33 runs   (   56.84 ms per token,    17.59 tokens per second)
+falcon_print_timings:       total time =  1901.62 ms
+# this benefits from latest CUDA drivers, the 24GB are very tight. Minor VRAM swapping must be going on.
 ```
 
 **Falcon 7B 8 bit quantization:**
