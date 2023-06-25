@@ -1247,7 +1247,7 @@ static void falcon_model_load_internal(
         ggml_cuda_set_scratch_size(vram_scratch);
         if (n_gpu_layers > 0) {
 
-            fprintf(stderr, "%s: allocating batch_size x 1 MB = %ld MB VRAM for the scratch buffer\n",
+            fprintf(stderr, "%s: allocating batch_size x 1 MB = %zd MB VRAM for the scratch buffer\n",
                     __func__, vram_scratch / MB);
         }
 #endif // GGML_USE_CUBLAS
@@ -1279,6 +1279,11 @@ static void falcon_model_load_internal(
             backend_norm = GGML_BACKEND_CPU;
             backend_output = GGML_BACKEND_CPU;
         }
+        if (model.type == FALCON_7B)
+        {
+            // quickfix - cuBLAS multiplication fails on lm_head for 7B
+            backend_output = GGML_BACKEND_CPU; 
+        }
         
         // "output" tensor
         {
@@ -1297,7 +1302,7 @@ static void falcon_model_load_internal(
         {
             vram_weights += ggml_nbytes(model.lm_head);
             vram_free -= ggml_nbytes(model.lm_head);
-            fprintf(stderr, "%s: Offloading Output head tensor (%ld MB)\n", __func__, ggml_nbytes(model.lm_head)/MB);
+            fprintf(stderr, "%s: Offloading Output head tensor (%zd MB)\n", __func__, ggml_nbytes(model.lm_head)/MB);
         }
 
         int i_gpu_start = n_layer - n_gpu_layers;
