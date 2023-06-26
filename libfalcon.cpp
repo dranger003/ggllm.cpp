@@ -174,7 +174,6 @@ struct falcon_model {
     struct ggml_tensor* output_norm;
     struct ggml_tensor* output_norm_b;
     struct ggml_tensor* lm_head;
-    // struct ggml_tensor* output;
 
     std::vector<falcon_layer> layers;
 
@@ -694,7 +693,7 @@ struct llama_model_loader {
     uint32_t guess_n_parts() const {
         auto it = tensors_map.name_to_idx.find("transformer.word_embeddings.weight");
         if (it == tensors_map.name_to_idx.end()) {
-            throw std::runtime_error(std::string("missing tok_embeddings.weight"));
+            throw std::runtime_error(std::string("missing word_embeddings.weight"));
         }
         const falcon_load_tensor & lt = tensors_map.tensors.at(it->second);
         return file_loaders.at(0)->hparams.n_embd / lt.shards.at(0).ne.at(0);
@@ -765,7 +764,7 @@ struct llama_model_loader {
         return tensor;
     }
 
-    void done_getting_tensors() const {
+    void verify_correct_load() const {
         if (num_ggml_tensors_created != tensors_map.tensors.size()) {
             throw std::runtime_error(std::string("falcon.cpp: file contained more tensors than expected"));
         }
@@ -824,6 +823,8 @@ struct llama_model_loader {
 #if defined(GGML_USE_CUBLAS)
                 case GGML_BACKEND_GPU:
                 case GGML_BACKEND_GPU_SPLIT:
+                // there is no downside assigning the host pointer as long as we've the RAM to hold the mmap region
+                lt.ggml_tensor->data = lt.data;
                     ggml_cuda_transform_tensor(lt.data, lt.ggml_tensor);
                     if (!use_mmap) {
                         free(lt.data);
@@ -1220,9 +1221,9 @@ static void falcon_model_load_internal(
 
         if (model.type == FALCON_40B && n_batch > 1)
         {
-            if (model.hparams.ftype != LLAMA_FTYPE_ALL_F32)
+            if (model.hparams.ftype == LLAMA_FTYPE_ALL_F32)
             {
-
+                // vram_overhead += 128*MB; 
             } else if (model.hparams.ftype == LLAMA_FTYPE_MOSTLY_Q8_0)
             {
                 // vram_overhead += (1024 + 288 + 256) * MB; // todo: when can manually create one 1024 buffer manually, saves 500+mb vram
@@ -1232,18 +1233,19 @@ static void falcon_model_load_internal(
                 vram_overhead += 4000*MB; // all k type
             } else
                 vram_overhead += 4500*MB; // all non k type
-            fprintf(stderr, "%s: INFO: using n_batch larger than 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
+            fprintf(stderr, "%s: INFO: using n_batch larger than 1 requires additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
         }
         if (model.type == FALCON_7B && n_batch > 1)
         {
             //vram_overhead += (315 + 80 + 78) * MB; // todo: manually create a 315mb buffer, saves 160mb vram
-            if (model.hparams.ftype != LLAMA_FTYPE_ALL_F32)
+            if (model.hparams.ftype == LLAMA_FTYPE_ALL_F32)
             {
 
             } else if (model.hparams.ftype == LLAMA_FTYPE_MOSTLY_Q8_0)
             {
                 vram_overhead += 1700*MB; // 1500-1700  (k type does not exist yet)
-            }
+            } else
+                vram_overhead += 1500*MB; // all others used 200mb less than 8 bit for 7B
             fprintf(stderr, "%s: INFO: using n_batch larger than 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
         }
     } else
@@ -1402,7 +1404,7 @@ static void falcon_model_load_internal(
         }
     }
 
-    ml->done_getting_tensors();
+    ml->verify_correct_load();
 
     // print memory requirements
     {
@@ -1442,16 +1444,7 @@ static void falcon_model_load_internal(
         model.tensors_by_name.emplace_back(lt.name, lt.ggml_tensor);
     }
     
-
-/*  moved into common so that it is set from begin on and can be visualized before evaluation starts
-    (void) tensor_split;
-#if defined(GGML_USE_CUBLAS)
-    {
-        // optional tensor split by custom parameters if defined
-        ggml_cuda_set_tensor_split(tensor_split);
-    }
-#endif
-*/
+    
     if (progress_callback) {
         progress_callback(0.01f, progress_callback_user_data,"Loading weights");
     }
@@ -1706,15 +1699,12 @@ static bool falcon_eval_internal(
                 0, 2, 1, 3);
 
             // K * Q
-
             if(0)
             {
-                K = ggml_cont(ctx0, ggml_repeat2(ctx0, K, repeat_dummy));
-            } else
-            {
-                // roughly 25% speed increase at context 300 on 40b 6k
-                // K = ggml_repeat2(ctx0, ggml_cont(ctx0, K),repeat_dummy); 
+                // interleaved repeat for multiplication (now broadcasted)
+                K = ggml_repeat2(ctx0, ggml_cont(ctx0, K),repeat_dummy); 
             }
+            
             
             ggml_set_name(K, "K");
             struct ggml_tensor * Q = ggml_permute(ctx0, Qcur, 0, 2, 1, 3);
@@ -1751,18 +1741,20 @@ static bool falcon_eval_internal(
                     head_dim, n_head_kv, n_past + N),
                 0, 2, 1, 3);
 
-            if(0)
-            {
-                 V = ggml_cont(ctx0, ggml_transpose(ctx0, ggml_repeat2(ctx0, V, repeat_dummy)));
-            } else
+
             {
                 V = ggml_permute(ctx0, V, 1, 0, 2, 3);
                 V = ggml_cont(ctx0, V);
-                struct ggml_tensor* repeat_dummy_permuted =  ggml_new_tensor_3d(ctx0, inpL->type, N + n_past, head_dim, n_head);
-                //V = ggml_repeat2(ctx0, V, repeat_dummy_permuted);
+                if (0)
+                {
+                    // interleaved repeat for multiplication (now broadcasted)
+                    struct ggml_tensor* repeat_dummy_permuted =  ggml_new_tensor_3d(ctx0, inpL->type, N + n_past, head_dim, n_head);
+                    V = ggml_repeat2(ctx0, V, repeat_dummy_permuted);   
+                }
+                ggml_set_name(V, "V");  
             }
 
-            ggml_set_name(V, "V");
+            
 
             // KQV = transpose(V) * KQ_soft_max
             struct ggml_tensor * KQV = ggml_mul_mat(ctx0, V, KQ_soft_max);
@@ -1801,7 +1793,7 @@ static bool falcon_eval_internal(
             cur = ggml_mul_mat(ctx0, model.layers[il].ffn_up, inpFF);
             //offload_func(cur);
             ggml_set_name(cur, "inpFF*ff_up"); 
-            cur = ggml_gelu(ctx0, cur);
+            cur = ggml_gelu_inplace(ctx0, cur);
             //offload_func(cur);
             cur = ggml_mul_mat(ctx0, model.layers[il].ffn_down, cur);
             //offload_func(cur);
@@ -1849,7 +1841,7 @@ static bool falcon_eval_internal(
 
 
     // language modelling head
-    cur = ggml_mul_mat(ctx0, model.lm_head, cur);
+    cur = ggml_mul_mat(ctx0, model.lm_head, cur);    
     //offload_func(cur);
     ggml_set_name(cur, "result_lm_head");
 
@@ -1863,16 +1855,12 @@ static bool falcon_eval_internal(
 
     // run the computation
     ggml_build_forward_expand(&gf, cur);
-#if 0
-    // use to confirm vram_overhead is correct
-    size_t vram_total=0;
-    size_t vram_free=0;
-#if defined(GGML_USE_CUBLAS)
-    cudaMemGetInfo(&vram_free, &vram_total); // this should go in ggml-cuda.cu but I don't want to make Johannes life harder by modifying that yet
-    fprintf(stderr, "\n%s: VRAM free: %7.2f MB  of %7.2f MB (in use: %7.2f MB)\n", __func__, vram_free/MB*1.0, vram_total/MB*1.0, (vram_total-vram_free)/MB*1.0);
-#endif
-#endif
+    
 
+    ggml_backend lm_head_backend = model.lm_head->backend;
+    if (model.type == FALCON_7B && (n_tokens > 1))
+        model.lm_head->backend = GGML_BACKEND_CPU;  // cublas fails
+        
 #ifdef GGML_USE_METAL
     if (lctx.ctx_metal && N == 1) {
         ggml_metal_graph_compute(lctx.ctx_metal, &gf);
@@ -1899,7 +1887,7 @@ static bool falcon_eval_internal(
 #else
     ggml_graph_compute(ctx0, &gf);
 #endif
-
+    model.lm_head->backend = lm_head_backend;
     if (cgraph_fname) {
         ggml_graph_export(&gf, cgraph_fname);
     }
@@ -1908,14 +1896,14 @@ static bool falcon_eval_internal(
     // print timing information per ggml operation (for debugging purposes)
     if (debug_timings)
     {
-        if (n_past > 0)
+        if (n_past > 0 || debug_timings != 2)
         {
             static bool first = true;
             if ((first && debug_timings <=2) || debug_timings > 2)
             {
                 first = false;
-                // ggml_graph_print_impl(&gf,true,false,GGML_OP_MUL_MAT); // GGML_OP_MUL_MAT / GGML_OP_NONE
-                ggml_graph_print_impl(&gf,true,false,GGML_OP_NONE); // GGML_OP_MUL_MAT / GGML_OP_NONE
+                ggml_graph_print_impl(&gf,true,false,GGML_OP_MUL_MAT); // GGML_OP_MUL_MAT / GGML_OP_NONE
+                // ggml_graph_print_impl(&gf,true,false,GGML_OP_NONE); // GGML_OP_MUL_MAT / GGML_OP_NONE
             }
         }
         // requires GGML_PERF to be defined for actual timing information

@@ -2573,6 +2573,7 @@ void ggml_cuda_nop(const ggml_tensor * src0, const ggml_tensor * src1, ggml_tens
     (void) dst;
 }
 
+// copy tensor (*data) to the correct device(s) and assign tensor->extra->data_device[] with cuda mem pointer
 void ggml_cuda_transform_tensor(void * data, struct ggml_tensor * tensor) {
     int nrows = ggml_nrows(tensor);
     const size_t nb1 = tensor->nb[1];
