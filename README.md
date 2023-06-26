@@ -50,6 +50,8 @@ cmake --build . --config Release
 2) Building with make (fallback):
 ```
 export LLAMA_CUBLAS=1;
+# if you do not have "nvcc" in your path:
+# export PATH="/usr/local/cuda/bin:$PATH"
 make falcon_main falcon_quantize falcon_perplexity
 ```
 
@@ -77,6 +79,15 @@ export LD_LIBRARY_PATH="/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH"
 export PATH="/usr/local/cuda-12.1/bin:$PATH"
 # now start with a fresh cmake and all should work 
 ```
+
+**CUDA Optimizing inference speed**
+- Thread count will be optimal between 1 and 8. Start with `-t 2` 
+- For huge prompts n_batch can speed up processing 10-20 times but additional VRAM of 1500-4700 MB is required. That's `-b 512` 
+- Multi GPU systems can benefit from single GPU processing when the model is small enough. That's `--override-max-gpu 1`  
+- Multi GPU systems with different GPUs benefit from custom tensor splitting to load one GPU heavier. To load the 2nd GPU stronger: `--tensor-split 1,3` `-mg 1`
+- Need to squeeze a model into VRAM but 1-2 layers don't fit ? Try `--gpu-reserve-mb-main 1` to reduce reserved VRAM to 1 MB
+- Wish to reduce VRAM usage and offload less layers? Use `-ngl 10` to only load 10 layers
+- Want to dive into details ? Use `--debug-timings <1,2,3>` to get detailed statistics on performance of each operation
 
    
 **Inference speed**  
