@@ -1714,7 +1714,7 @@ static bool falcon_eval_internal(
             } else
             {
                 // roughly 25% speed increase at context 300 on 40b 6k
-                K = ggml_repeat2(ctx0, ggml_cont(ctx0, K),repeat_dummy); 
+                // K = ggml_repeat2(ctx0, ggml_cont(ctx0, K),repeat_dummy); 
             }
             
             ggml_set_name(K, "K");
@@ -1760,7 +1760,7 @@ static bool falcon_eval_internal(
                 V = ggml_permute(ctx0, V, 1, 0, 2, 3);
                 V = ggml_cont(ctx0, V);
                 struct ggml_tensor* repeat_dummy_permuted =  ggml_new_tensor_3d(ctx0, inpL->type, N + n_past, head_dim, n_head);
-                V = ggml_repeat2(ctx0, V, repeat_dummy_permuted);
+                //V = ggml_repeat2(ctx0, V, repeat_dummy_permuted);
             }
 
             ggml_set_name(V, "V");
