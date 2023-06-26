@@ -4016,7 +4016,14 @@ static inline int ggml_up(int n, int m) {
     GGML_ASSERT(((uintptr_t) (ptr))%GGML_MEM_ALIGN == 0)
 
 ////////////////////////////////////////////////////////////////////////////////
-
+#if defined(GGML_USE_CUBLAS)
+thread_ret_t ggml_init_cublas_wrapper(void *data)
+{
+    (void)data;
+    ggml_init_cublas(false);
+    return 0;
+}
+#endif
 struct ggml_context * ggml_init(struct ggml_init_params params) {
     // make this function thread safe
     ggml_critical_section_start();
@@ -4064,7 +4071,12 @@ struct ggml_context * ggml_init(struct ggml_init_params params) {
         }
 
 #if defined(GGML_USE_CUBLAS)
-        ggml_init_cublas();
+        if (!ggml_init_cublas(true))
+        {
+            pthread_t initThread;
+            pthread_create(&initThread, NULL, ggml_init_cublas_wrapper, NULL);
+        }
+        // ggml_init_cublas();
 #elif defined(GGML_USE_CLBLAST)
         ggml_cl_init();
 #endif

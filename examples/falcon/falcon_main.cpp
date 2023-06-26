@@ -110,7 +110,7 @@ int main(int argc, char ** argv) {
         params.seed = time(NULL);
     }
 
-    fprintf(stderr, "%s: seed  = %d\n", __func__, params.seed);
+    // fprintf(stderr, "%s: seed  = %d\n", __func__, params.seed);
 
     std::mt19937 rng(params.seed);
     if (params.random_prompt) {
@@ -128,6 +128,23 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "%s: error: unable to load model\n", __func__);
         return 1;
     }
+
+    #if defined(GGML_USE_CUBLAS)
+    // wait for cublas and show device information
+    {
+        ggml_cuda_print_gpu_status(ggml_cuda_get_system_gpu_status(),true);
+        while (!ggml_init_cublas(true))
+        {
+            static bool first = true;
+            if (first) {
+                fprintf(stderr, "%s: waiting for cuda handles to become available...\n", __func__);
+                first = false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+    }
+    #endif
 
     // print system information
     {
@@ -312,14 +329,14 @@ fprintf(stderr, "| %10s | %5s | %4s | %4s | %4s | %4s | %4s | %4s | %4s | %4s | 
 fprintf(stderr, "+------------+-------+-------+-------+-------+-------+-------+-------+-------+------+------+--------+---------+\n");
 fprintf(stderr, "|            | %5d | %.3f | %.3f | %.3f | %5d | %.3f | %.3f | %.3f | %.2f | %4d | %.4f | %.5f |\n", 
                 params.repeat_last_n, params.repeat_penalty, params.presence_penalty, params.frequency_penalty, params.top_k, params.tfs_z, params.top_p, params.typical_p, params.temp, params.mirostat, params.mirostat_eta, params.mirostat_tau);
-fprintf(stderr, "+============+=======+=======+=======+=======+=======+-------+-------+-------+------+------+--------+---------+\n");
-// fprintf(stderr, "+------------+---------+----------+--------+--------+\n");
-fprintf(stderr, "| %10s | %7s | %8s | %6s | %6s |\n", 
-                "Generation", "n_ctx", "n_batch", "n_keep","prompt");
-fprintf(stderr, "+------------+---------+----------+--------+--------+\n");
-fprintf(stderr, "|            | %7d | %8d | %6d | %6zu |\n",
-                n_ctx, params.n_batch, params.n_keep, embd_inp.size());
-fprintf(stderr, "+------------+---------+----------+--------+--------+\n");
+fprintf(stderr, "+============+=======+=======+=======+=======+=======+=======+====---+-------+------+------+--------+---------+\n");
+  
+fprintf(stderr, "| %10s | %7s | %8s | %6s | %6s | %10s |\n", 
+                "Generation", "n_ctx", "n_batch", "n_keep","prompt","seed");
+fprintf(stderr, "+------------+---------+----------+--------+--------+------------+\n");
+fprintf(stderr, "|            | %7d | %8d | %6d | %6zu | %10d |\n",
+                n_ctx, params.n_batch, params.n_keep, embd_inp.size(),params.seed);
+fprintf(stderr, "+------------+---------+----------+--------+--------+------------+\n");
 
     if (n_ctx < (int)(params.n_predict + embd_inp.size())) {
         fprintf(stderr, "%s: Warning: context is smaller than expected generation, will cause delays\n", __func__);

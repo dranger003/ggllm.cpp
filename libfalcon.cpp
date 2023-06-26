@@ -1441,6 +1441,7 @@ static void falcon_model_load_internal(
     for (falcon_load_tensor & lt : ml->tensors_map.tensors) {
         model.tensors_by_name.emplace_back(lt.name, lt.ggml_tensor);
     }
+    
 
 /*  moved into common so that it is set from begin on and can be visualized before evaluation starts
     (void) tensor_split;
@@ -1470,7 +1471,6 @@ static void falcon_model_load_internal(
     fprintf(stderr, "%s: VRAM free: %7.2f MB  of %7.2f MB (used: %7.2f MB)\n", __func__, vram_free/MB*1.0, vram_total/MB*1.0, (vram_total-vram_free)/MB*1.0);
 
     #endif
-
 
     model.mapping = std::move(ml->mapping);
 

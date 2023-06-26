@@ -30,7 +30,7 @@ typedef struct {
 
 const GPUStatus* ggml_cuda_get_system_gpu_status(void);
 
-void   ggml_init_cublas(void);
+bool   ggml_init_cublas(bool check_only);
 void   ggml_cuda_update_gpu_status(int device_id);
 void   ggml_cuda_print_gpu_status(const GPUStatus *status, bool print_summary);
 void   ggml_cuda_set_max_gpus(int max_gpus);
