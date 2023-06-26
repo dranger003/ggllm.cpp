@@ -4073,8 +4073,12 @@ struct ggml_context * ggml_init(struct ggml_init_params params) {
 #if defined(GGML_USE_CUBLAS)
         if (!ggml_init_cublas(true))
         {
+            // get num devices and memory information to avoid a potential race condition
+            ggml_cuda_update_gpu_status(-1);
+            // launch the handle creation into the background)
             pthread_t initThread;
             pthread_create(&initThread, NULL, ggml_init_cublas_wrapper, NULL);
+            // init needs to be checked before first operation starts
         }
         // ggml_init_cublas();
 #elif defined(GGML_USE_CLBLAST)

@@ -1632,8 +1632,9 @@ bool ggml_init_cublas(bool check_only) {
     int currentDevice = 0;
     CUDA_CHECK(cudaGetDevice(&currentDevice));
     if (!initialized) {
-        g_system_gpu_status.num_devices = 0;
-        ggml_cuda_update_gpu_status(-1);
+        //g_system_gpu_status.num_devices = 0;
+        if (g_system_gpu_status.num_devices == 0)
+            ggml_cuda_update_gpu_status(-1);
 
         bool all_zero = true;
         for (int i = 0; i < g_system_gpu_status.num_devices; ++i) {

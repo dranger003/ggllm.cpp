@@ -107,7 +107,7 @@ int main(int argc, char ** argv) {
     fprintf(stderr, "%s: build = %d (%s)\n", __func__, BUILD_NUMBER, BUILD_COMMIT);
 
     if (params.seed < 0) {
-        params.seed = time(NULL);
+        params.seed = static_cast<int32_t>(time(NULL));
     }
 
     // fprintf(stderr, "%s: seed  = %d\n", __func__, params.seed);
@@ -133,16 +133,6 @@ int main(int argc, char ** argv) {
     // wait for cublas and show device information
     {
         ggml_cuda_print_gpu_status(ggml_cuda_get_system_gpu_status(),true);
-        while (!ggml_init_cublas(true))
-        {
-            static bool first = true;
-            if (first) {
-                fprintf(stderr, "%s: waiting for cuda handles to become available...\n", __func__);
-                first = false;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-
     }
     #endif
 

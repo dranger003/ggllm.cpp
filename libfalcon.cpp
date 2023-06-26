@@ -1459,17 +1459,16 @@ static void falcon_model_load_internal(
     ml->load_all_data(progress_callback, progress_callback_user_data, use_mlock ? &lctx.model.mlock_mmap : NULL);
 
     if (progress_callback) {
-        progress_callback(1.0f, progress_callback_user_data,"Tensors populated");
+        progress_callback(0.98f, progress_callback_user_data,"Tensors populated");
     }
 
     #if defined(GGML_USE_CUBLAS)
-    //size_t vram_free_simulated = vram_free;
     ggml_cuda_update_gpu_status(-1);
-    system_gpu_status = ggml_cuda_get_system_gpu_status();
-    vram_free = system_gpu_status->total_free_vram;
-    vram_total= system_gpu_status->total_vram;
-    fprintf(stderr, "%s: VRAM free: %7.2f MB  of %7.2f MB (used: %7.2f MB)\n", __func__, vram_free/MB*1.0, vram_total/MB*1.0, (vram_total-vram_free)/MB*1.0);
-
+    progress_callback(0.99f, progress_callback_user_data,"Waiting for CUDA");
+    while (!ggml_init_cublas(true)) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    progress_callback(1.0f, progress_callback_user_data,"Tensors populated, CUDA ready");
+    #else
+    progress_callback(1.0f, progress_callback_user_data,"Tensors populated");
     #endif
 
     model.mapping = std::move(ml->mapping);
