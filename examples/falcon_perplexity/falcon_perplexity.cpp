@@ -158,6 +158,13 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
+    #if defined(GGML_USE_CUBLAS)
+    // wait for cublas and show device information
+    {
+        ggml_cuda_print_gpu_status(ggml_cuda_get_system_gpu_status(),true);
+    }
+    #endif
+
     // print system information
     {
         fprintf(stderr, "\n");

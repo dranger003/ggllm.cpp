@@ -1624,13 +1624,17 @@ void ggml_cuda_set_max_gpus(int max_gpus) {
     g_system_gpu_status.max_gpus = max_gpus;
 }
 
-void ggml_init_cublas() {
-    static bool initialized = false;
+// can be called multithreaded to prevent 1-2 seconds delay on handle creation
+bool ggml_init_cublas(bool check_only) {
+    static volatile bool initialized = false;
+    if (check_only || initialized) return initialized;
+        
     int currentDevice = 0;
     CUDA_CHECK(cudaGetDevice(&currentDevice));
     if (!initialized) {
-        g_system_gpu_status.num_devices = 0;
-        ggml_cuda_update_gpu_status(-1);
+        //g_system_gpu_status.num_devices = 0;
+        if (g_system_gpu_status.num_devices == 0)
+            ggml_cuda_update_gpu_status(-1);
 
         bool all_zero = true;
         for (int i = 0; i < g_system_gpu_status.num_devices; ++i) {
@@ -1652,10 +1656,9 @@ void ggml_init_cublas() {
                 g_tensor_split[id] /= total_vram;
             }
         }
-        ggml_cuda_print_gpu_status(&g_system_gpu_status,true);
-        printf("Preparing CUDA for device(s): \n");
+        //ggml_cuda_print_gpu_status(&g_system_gpu_status,true);
+        // printf("Preparing CUDA for %d devices: ",g_system_gpu_status.num_devices);
         for (int id = 0; id < g_system_gpu_status.num_devices; ++id) {
-            printf("[%d]", id);
             CUDA_CHECK(cudaSetDevice(id));
 
             // create streams
@@ -1663,19 +1666,15 @@ void ggml_init_cublas() {
                 CUDA_CHECK(cudaStreamCreateWithFlags(&g_cudaStreams_main[id][i], cudaStreamNonBlocking));
                 CUDA_CHECK(cudaStreamCreateWithFlags(&g_cudaStreams_memcpy_src1[id][i], cudaStreamNonBlocking));
             }
-            printf(".");
             // create events
             for (int i = 0; i < GGML_CUDA_MAX_EVENTS; ++i) {
                 CUDA_CHECK(cudaEventCreateWithFlags(&g_cudaEvents_memcpy_src1[id][i], cudaEventDisableTiming));
             }
-            printf(".");
 
             // create cublas handle
             CUBLAS_CHECK(cublasCreate(&g_cublas_handles[id]));
             CUBLAS_CHECK(cublasSetMathMode(g_cublas_handles[id], CUBLAS_TF32_TENSOR_OP_MATH));
-            printf(".");
         }
-        printf(" [done]\n");
         CUDA_CHECK(cudaSetDevice(currentDevice));
 
         // configure logging to stdout
@@ -1684,6 +1683,7 @@ void ggml_init_cublas() {
         initialized = true;
         
     }
+    return initialized;
 }
 
 // prepare tensor split before we've initizalized cublas
