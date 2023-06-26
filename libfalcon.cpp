@@ -1695,14 +1695,13 @@ static bool falcon_eval_internal(
 
             struct ggml_tensor * K = ggml_permute(
                 ctx0,
-                ggml_reshape_3d(
+                ggml_view_3d(
                     ctx0,
-                    ggml_view_1d(ctx0, kv_self.k, (n_past + N) * n_head_kv * head_dim,
-                                 il * n_ctx *
-                                     ggml_element_size(kv_self.k) *
-                                     n_head_kv *
-                                     head_dim),
-                    head_dim, n_head_kv, n_past + N),
+                    kv_self.k,
+                    head_dim, n_head_kv, n_past + N,
+                    head_dim * sizeof_wtype,
+                    head_dim * n_head_kv * sizeof_wtype,
+                    il * n_ctx * ggml_element_size(kv_self.k) * n_head_kv * head_dim),
                 0, 2, 1, 3);
 
             // K * Q
@@ -1741,14 +1740,13 @@ static bool falcon_eval_internal(
             // V_trans = Vmem.view(n_embd/n_head, n_head, n_past + N).permute(1, 2, 0, 3).contiguous()
             struct ggml_tensor* V = ggml_permute(
                 ctx0,
-                ggml_reshape_3d(
+                ggml_view_3d(
                     ctx0,
-                    ggml_view_1d(ctx0, kv_self.v, (n_past + N) * n_head_kv * head_dim,
-                                 il * n_ctx *
-                                     ggml_element_size(model.kv_self.v) *
-                                     n_head_kv *
-                                     head_dim),
-                    head_dim, n_head_kv, n_past + N),
+                    kv_self.v,
+                    head_dim, n_head_kv, n_past + N,
+                    head_dim * sizeof_wtype,
+                    head_dim * n_head_kv * sizeof_wtype,
+                    il * n_ctx * ggml_element_size(kv_self.v) * n_head_kv * head_dim),
                 0, 2, 1, 3);
 
             if(0)
