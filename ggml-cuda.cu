@@ -2747,6 +2747,8 @@ static void ggml_cuda_op(const ggml_tensor * src0, const ggml_tensor * src1, ggm
                 // 16 bit cuBLAS hack:
                 if (cu_blas_16_bit_hack) {
                     half * src0_ddf_i_f16 = (half*) src0_ddf_i;
+                    // todo add src0_is_f16 check
+                    (void) src0_is_f16;
                     to_fp16_cuda(src0_ddq_i, src0_ddf_i_f16, i01_diff*ne00, cudaStream_main);
                     CUDA_CHECK(cudaGetLastError());
                     op = ggml_cuda_op_mul_mat_cublas_f16_f32_wrapper;

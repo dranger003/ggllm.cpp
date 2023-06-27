@@ -18132,17 +18132,17 @@ void ggml_graph_print_impl(const struct ggml_cgraph * cgraph, bool print_nodes, 
             if (node->meta.cuda_perf_mal_mul_type > 0)
             {
                 if (node->meta.cuda_perf_mal_mul_type == 1)
-                    sprintf(str_device_info, "%s (%s)", str_device_info, "xQ");
+                    snprintf(str_device_info,127, "%s (%s)", str_device_info, "xQ");
                 if (node->meta.cuda_perf_mal_mul_type == 16)
-                    sprintf(str_device_info, "%s (%s)", str_device_info, "xB16");
+                    snprintf(str_device_info, 127,"%s (%s)", str_device_info, "xB16");
                 if (node->meta.cuda_perf_mal_mul_type == 32)
-                    sprintf(str_device_info, "%s (%s)", str_device_info, "xB32");
+                    snprintf(str_device_info,127, "%s (%s)", str_device_info, "xB32");
             }
-            sprintf(str_device_info, "%s]", str_device_info);
+            snprintf(str_device_info,127, "%s]", str_device_info);
         }
         else 
         {
-            sprintf(str_device_info, "[CPU]");
+            snprintf(str_device_info, 127, "[CPU]");
         }
         // the printed dimensions are not necessarily correct, needs an improvement
         if (print_nodes)
