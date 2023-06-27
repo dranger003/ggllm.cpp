@@ -18125,7 +18125,7 @@ void ggml_graph_print_impl(const struct ggml_cgraph * cgraph, bool print_nodes, 
         
         char *c_perf_impact = (perf_array[i] > perf_mean + perf_sd) ? "(Slow)" : ((perf_array[i] < perf_mean - perf_sd) ? "(Fast)" : "");
 
-        char str_device_info[128];
+        char str_device_info[512];
         if (node->meta.info_op_on_device >= 0 || node->src0->backend!=GGML_BACKEND_CPU) 
         {
             sprintf(str_device_info, "[GPU");
