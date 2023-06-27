@@ -1417,7 +1417,7 @@ static void falcon_model_load_internal(
 
             layer.ffn_up = ml->get_tensor("transformer.h."+str_i + ".mlp.dense_h_to_4h.weight", {n_embd, n_ff}, backend_split); // before gelu
             layer.ffn_down = ml->get_tensor("transformer.h."+str_i + ".mlp.dense_4h_to_h.weight", {n_ff, n_embd}, backend_split); // after gelu
-            
+            #ifdef GGML_USE_CUBLAS
             if (backend != GGML_BACKEND_CPU)
             {
                 size_t vram_layer = 0;
@@ -1441,6 +1441,7 @@ static void falcon_model_load_internal(
                     fprintf(stderr,"%s: INFO: %d layers will be offloaded to GPU (layers %d to %d)\n", __func__, n_gpu_layers, i_gpu_start+1, i_gpu_last+1);
                 }
             }
+            #endif
 
 
          
