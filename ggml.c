@@ -18125,24 +18125,24 @@ void ggml_graph_print_impl(const struct ggml_cgraph * cgraph, bool print_nodes, 
         
         char *c_perf_impact = (perf_array[i] > perf_mean + perf_sd) ? "(Slow)" : ((perf_array[i] < perf_mean - perf_sd) ? "(Fast)" : "");
 
-        char str_device_info[512];
+        char str_device_info[128];
         if (node->meta.info_op_on_device >= 0 || node->src0->backend!=GGML_BACKEND_CPU) 
         {
             sprintf(str_device_info, "[GPU");
             if (node->meta.cuda_perf_mal_mul_type > 0)
             {
                 if (node->meta.cuda_perf_mal_mul_type == 1)
-                    snprintf(str_device_info,127, "%s (%s)", str_device_info, "xQ");
+                    strcat(str_device_info, "xQ");
                 if (node->meta.cuda_perf_mal_mul_type == 16)
-                    snprintf(str_device_info, 127,"%s (%s)", str_device_info, "xB16");
+                    strcat(str_device_info, "xBl16");
                 if (node->meta.cuda_perf_mal_mul_type == 32)
-                    snprintf(str_device_info,127, "%s (%s)", str_device_info, "xB32");
+                    strcat(str_device_info, "xBl32");
             }
-            snprintf(str_device_info,127, "%s]", str_device_info);
+            strcat(str_device_info, "]");
         }
         else 
         {
-            snprintf(str_device_info, 127, "[CPU]");
+            snprintf(str_device_info, 512, "[CPU]");
         }
         // the printed dimensions are not necessarily correct, needs an improvement
         if (print_nodes)
