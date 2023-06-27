@@ -15568,6 +15568,10 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
     if (skip_cpu) {
         return;
     }
+    if (tensor->src0 == NULL || (tensor->src0->backend != GGML_BACKEND_CPU))
+    {
+        ggml_tensor_printf(tensor, "compute_forward_problem", __LINE__,1,false);
+    }
     GGML_ASSERT(tensor->src0 == NULL || tensor->src0->backend == GGML_BACKEND_CPU);
     GGML_ASSERT(tensor->src1 == NULL || tensor->src1->backend == GGML_BACKEND_CPU);
 #endif // GGML_USE_CUBLAS
@@ -18126,8 +18130,9 @@ void ggml_graph_print_impl(const struct ggml_cgraph * cgraph, bool print_nodes, 
         char *c_perf_impact = (perf_array[i] > perf_mean + perf_sd) ? "(Slow)" : ((perf_array[i] < perf_mean - perf_sd) ? "(Fast)" : "");
 
         char str_device_info[128];
-        if (node->meta.info_op_on_device >= 0 || node->src0->backend!=GGML_BACKEND_CPU) 
+        if (node->meta.cuda_info_op_on_device >= 0 || node->src0->backend!=GGML_BACKEND_CPU || node->meta.cuda_perf_mal_mul_type > 0) 
         {
+            //note: node->meta.cuda_perf_mal_mul_type > 0 without GPU backend means temporary buffers were used, typical cuBLAS case
             sprintf(str_device_info, "[GPU");
             if (node->meta.cuda_perf_mal_mul_type > 0)
             {

@@ -2846,12 +2846,21 @@ bool ggml_cuda_can_mul_mat(const struct ggml_tensor * src0, const struct ggml_te
 
     const int64_t ne0 = dst->ne[0];
     const int64_t ne1 = dst->ne[1];
-
+    // if cuda is disabled we reject
+    if (g_system_gpu_status.num_devices == 0) {
+        return false;
+    }
+    if (dst->meta.cuda_op_directive != -1) return dst->meta.cuda_op_directive? true : false;
+    if (src0->meta.cuda_op_directive != -1) return src0->meta.cuda_op_directive? true : false;
+    if (src1->meta.cuda_op_directive != -1) return src1->meta.cuda_op_directive? true : false;
+    
     // TODO: find the optimal values for these
     if ((src0->type == GGML_TYPE_F32 || src0->type == GGML_TYPE_F16 || ggml_is_quantized(src0->type)) &&
         src1->type == GGML_TYPE_F32 &&
         dst->type == GGML_TYPE_F32 &&
         (ne0 >= 32 && ne1 >= 32 && ne10 >= 32)) {
+            //todo: wouldn't it make sense to switch based on flops required  instead ?
+            // printf("can_mul_mat: true for shape: %ld %ld %ld\n", ne0, ne1, ne10);
         return true;
     }
 
@@ -3185,8 +3194,17 @@ void ggml_cuda_free_scratch() {
 
 bool ggml_cuda_compute_forward(struct ggml_compute_params * params, struct ggml_tensor * tensor){
     ggml_cuda_func_t func;
+
     if (tensor->op == GGML_OP_NONE)
         return true;
+    // user has disabled cuda or no devices found
+    if (g_system_gpu_status.num_devices == 0) 
+         return false;
+    // allow manual skip
+    if (tensor->meta.cuda_op_directive == 0) 
+        return false;
+
+
     const bool any_on_device = tensor->backend == GGML_BACKEND_GPU
         || tensor->src0->backend == GGML_BACKEND_GPU || tensor->src0->backend == GGML_BACKEND_GPU_SPLIT
         || (tensor->src1 != nullptr && tensor->src1->backend == GGML_BACKEND_GPU);

@@ -1557,8 +1557,8 @@ static bool falcon_eval_internal(
             int debug_timings) {
 
     const int64_t t_start_us = ggml_time_us();
-    const bool use_broadcasting = (n_tokens == 1); // switched from interleaving repeat to broadcasting
-
+    bool use_broadcasting = true;//(n_tokens == 1); // switched from interleaving repeat to broadcasting
+    
     const int N = n_tokens;
     //const int N = embd_inp.size();
 
@@ -1581,6 +1581,12 @@ static bool falcon_eval_internal(
 
     auto & mem_per_token = lctx.mem_per_token;
     auto & buf_compute   = lctx.buf_compute;
+    if (n_tokens > 1 && n_gpu_layers > 0)     {
+        // for batched prompt processing if using cublas on QKV multiplications is wanted
+        // this causes a expensive interleaving repeat and cpy on CPU but enabled highspeed processing
+        // ín all tested cases CPU processing was faster (through interleaved broadcasting)
+        // use_broadcasting=false;
+    }
 
     struct ggml_init_params params = {
         /*.mem_size   =*/ buf_compute.size,
@@ -1753,6 +1759,7 @@ static bool falcon_eval_internal(
             struct ggml_tensor * Q = ggml_permute(ctx0, Qcur, 0, 2, 1, 3);
             ggml_set_name(Q, "Q");
             struct ggml_tensor * KQ = ggml_mul_mat(ctx0, K, Q);
+            if (use_broadcasting) KQ->meta.cuda_op_directive=0;
             ggml_set_name(KQ, "KQ");
 
             // KQ_scaled = KQ / sqrt(n_embd/n_head)
@@ -1799,6 +1806,7 @@ static bool falcon_eval_internal(
 
             // KQV = transpose(V) * KQ_soft_max
             struct ggml_tensor * KQV = ggml_mul_mat(ctx0, V, KQ_soft_max);
+            if (use_broadcasting) KQV->meta.cuda_op_directive=0;
             ggml_set_name(KQV, "KQV");
 
             // KQV_merged = KQV.permute(0, 2, 1, 3)
@@ -1882,7 +1890,8 @@ static bool falcon_eval_internal(
 
 
     // language modelling head
-    cur = ggml_mul_mat(ctx0, model.lm_head, cur);    
+    cur = ggml_mul_mat(ctx0, model.lm_head, cur); 
+    
     //offload_func(cur);
     ggml_set_name(cur, "result_lm_head");
 

@@ -387,20 +387,26 @@ extern "C" {
                 // keep it divisible by 16 bytes
                 int8_t layer_id;                  // -1 = global, 0 = first layer
                 char short_name[GGML_MAX_NAME];   // shorter parameter weight name without layer name - used for debugging visualization only
-                int8_t info_op_on_device;         // -2 = not computed, -1 = on CPU, 0+ = on GPU device #
 
+
+                int8_t cuda_op_directive;       // -1 = default, 0 = no CUDA operation permitted, 1 = CUDA operation enforced (if possible) - allows to skip or force CUDA (needs more implementations)
+
+                int8_t cuda_info_op_on_device;         // -2 = not computed, -1 = on CPU, 0+ = on GPU device # not implemented yet
                 uint8_t cuda_perf_mal_mul_type;   // perf flag for dst tensors: 0 = no matmul, 1 = quantized kernel, 16/32 cuBLAS 16 or 32 bit processing
 
-                uint8_t padding;
+                // uint8_t padding;
         } tensor_meta;
         static const tensor_meta GGML_DEFAULT_TENSOR_META = {
                 /*.layer_id =*/ -1,
                 /*.short_name =*/ "",
-                /*.info_op_on_device =*/ -2,
 
+                /*.cuda_op_directive =*/ -1,
+
+                /*.cuda_info_op_on_device =*/ -2,
                 /*.cuda_perf_mal_mul_type =*/ 0,
 
-                /*.padding =*/ 0,
+
+                // /*.padding =*/ 0,
         };
     // n-dimensional tensor
     struct ggml_tensor {
