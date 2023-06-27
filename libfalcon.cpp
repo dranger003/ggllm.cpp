@@ -523,8 +523,8 @@ struct falcon_file_loader {
             tok_score.tok = std::move(word);
             tok_score.score = score;
         }
-        if (hparams.n_vocab == 65025 && vocab.id_to_token[65024].tok == "[PAD]") {
-            // this is a hack to support the old 65025 vocab size
+        if (file_version >= 4 && hparams.n_vocab == 65025 && vocab.id_to_token[65024].tok == "[PAD]") {
+            // wizard hack - shaving off one token
             vocab.id_to_token.resize(65024);
             vocab.token_to_id.erase("[PAD]");
             hparams.n_vocab = 65024;
@@ -717,9 +717,8 @@ struct llama_model_loader {
             throw std::runtime_error(std::runtime_error(format("falcon.cpp: tensor '%s' is missing from model", name.c_str())));
         }
         falcon_load_tensor & lt = tensors_map.tensors.at(it->second);
-        // special case - wizard padding token - todo: move into quantizer only
-        
-        if (lt.ne.size() != 2 || ne.size() != 2 || !((ne[0] == 8192 && ne[1] == 65024  && lt.ne[0] == 8192 && lt.ne[1] == 65025) || (ne[0] == 4544 && ne[1] == 65024  && lt.ne[0] == 4544 && lt.ne[1] == 65025)))
+        // special case - wizard padding token - todo: move into quantizer only (only with mmap versions)
+        if (!use_mmap || lt.ne.size() != 2 || ne.size() != 2 || !((ne[0] == 8192 && ne[1] == 65024  && lt.ne[0] == 8192 && lt.ne[1] == 65025) || (ne[0] == 4544 && ne[1] == 65024  && lt.ne[0] == 4544 && lt.ne[1] == 65025)))
         if (lt.ne != ne) {
             throw std::runtime_error(format("falcon.cpp: tensor '%s' has wrong shape; expected %s, got %s",
                          name.c_str(), llama_format_tensor_shape(ne).c_str(), llama_format_tensor_shape(lt.ne).c_str()));
@@ -735,13 +734,13 @@ struct llama_model_loader {
             ggml_set_no_alloc(ggml_ctx, true);
         }
         if (lt.ne.size() == 2) {
-            if ( lt.ne[0] == 8192 && lt.ne[1] == 65025 && (lt.name.find("transformer.word_embeddings.weight") == 0 || lt.name.find("lm_head.weight") == 0))
+            if (use_mmap && lt.ne[0] == 8192 && lt.ne[1] == 65025 && (lt.name.find("transformer.word_embeddings.weight") == 0 || lt.name.find("lm_head.weight") == 0))
             {
                 // TODO: evaluate if we lose perplexity from the changed shape
                 tensor = ggml_new_tensor_2d(ggml_ctx, lt.type, 8192, 65024);
                 fprintf(stderr, "falcon.cpp: Special mode: Wizard-type finetuning - changing tensor shape\n");
             } else
-            if ( lt.ne[0] == 4544 && lt.ne[1] == 65025 && (lt.name.find("transformer.word_embeddings.weight") == 0 || lt.name.find("lm_head.weight") == 0))
+            if (use_mmap && lt.ne[0] == 4544 && lt.ne[1] == 65025 && (lt.name.find("transformer.word_embeddings.weight") == 0 || lt.name.find("lm_head.weight") == 0))
             {
                 // TODO: evaluate if we lose perplexity from the changed shape
                 tensor = ggml_new_tensor_2d(ggml_ctx, lt.type, 4544, 65024);
@@ -1557,6 +1556,7 @@ static bool falcon_eval_internal(
             int debug_timings) {
 
     const int64_t t_start_us = ggml_time_us();
+    const bool use_broadcasting = true; // switched from interleaving repeat to broadcasting
 
     const int N = n_tokens;
     //const int N = embd_inp.size();
@@ -1600,8 +1600,6 @@ static bool falcon_eval_internal(
 
     struct ggml_tensor * cur;
     struct ggml_tensor * inpL = ggml_get_rows(ctx0, model.tok_embeddings, embd);
-    struct ggml_tensor* repeat_dummy = ggml_new_tensor_3d(ctx0, inpL->type, head_dim, N + n_past, n_head);
-    ggml_set_zero(repeat_dummy); // just for debug functions not catching uninitialized values
     
     struct ggml_tensor * layernorm_output;
 
@@ -1742,9 +1740,10 @@ static bool falcon_eval_internal(
                 0, 2, 1, 3);
 
             // K * Q
-            if(0)
+            if(!use_broadcasting)
             {
                 // interleaved repeat for multiplication (now broadcasted)
+                struct ggml_tensor* repeat_dummy = ggml_new_tensor_3d(ctx0, inpL->type, head_dim, N + n_past, n_head);
                 K = ggml_repeat2(ctx0, ggml_cont(ctx0, K),repeat_dummy); 
             }
             
@@ -1781,13 +1780,12 @@ static bool falcon_eval_internal(
                     head_dim * sizeof_wtype,
                     head_dim * n_head_kv * sizeof_wtype,
                     il * n_ctx * ggml_element_size(kv_self.v) * n_head_kv * head_dim),
-                0, 2, 1, 3);
-
-
+                1, 2, 0, 3);
+            
             {
-                V = ggml_permute(ctx0, V, 1, 0, 2, 3);
+                //  0, 2, 1, 3);   // V = ggml_permute(ctx0, V, 1, 0, 2, 3);
                 V = ggml_cont(ctx0, V);
-                if (0)
+                if (!use_broadcasting)
                 {
                     // interleaved repeat for multiplication (now broadcasted)
                     struct ggml_tensor* repeat_dummy_permuted =  ggml_new_tensor_3d(ctx0, inpL->type, N + n_past, head_dim, n_head);
