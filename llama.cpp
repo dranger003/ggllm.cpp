@@ -738,7 +738,7 @@ struct llama_model_loader {
         return tensor;
     }
 
-    void done_getting_tensors() const {
+    void verify_correct_load() const {
         if (num_ggml_tensors_created != tensors_map.tensors.size()) {
             throw std::runtime_error(std::string("llama.cpp: file contained more tensors than expected"));
         }
@@ -1224,7 +1224,7 @@ static void llama_model_load_internal(
         }
     }
 
-    ml->done_getting_tensors();
+    ml->verify_correct_load();
 
     // print memory requirements
     {

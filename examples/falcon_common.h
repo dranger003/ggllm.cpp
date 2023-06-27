@@ -23,7 +23,7 @@ int32_t get_num_physical_cores();
 
 struct gpt_params {
     int32_t seed                           = -1;   // RNG seed
-    int32_t n_threads                      = get_num_physical_cores();
+    int32_t n_threads                      = 1;
     int32_t n_predict                      = -1;   // new tokens to predict
     int32_t n_ctx                          = 512;  // context size
     int32_t n_batch                        = 1;  // batch size for prompt processing (must be >=32 to use BLAS)
@@ -31,7 +31,7 @@ struct gpt_params {
     int32_t n_gpu_layers                   = 200;  // number of layers to store in VRAM
     int32_t main_gpu                       = 0;    // the GPU that is used for scratch and small tensors
     float   tensor_split[LLAMA_MAX_DEVICES] = {0}; // how split tensors should be distributed across GPUs
-    int32_t n_max_gpu                      = 16;    // maximum number of GPUs to use
+    int n_max_gpu                      = 16;    // maximum number of GPUs to use
     int32_t mb_reserve_gpu_main            = false; // override reserved megabytes of VRAM for the main GPU
     // int     mb_reserve_gpu_other           = false; // override reserved megabytes of VRAM for secondary GPUs
 

@@ -58,7 +58,22 @@ int32_t get_num_physical_cores() {
         return num_physical_cores;
     }
 #elif defined(_WIN32)
-    //TODO: Implement
+    int logical_cores;
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    logical_cores = sysinfo.dwNumberOfProcessors;
+
+    DWORD_PTR process_affinity_mask;
+    DWORD_PTR system_affinity_mask;
+    GetProcessAffinityMask(GetCurrentProcess(), &process_affinity_mask, &system_affinity_mask);
+
+    int physical_cores = 0;
+    for (int i = 0; i < sizeof(DWORD_PTR) * 8; i++) {
+        if (process_affinity_mask & ((DWORD_PTR)1 << i)) {
+            physical_cores++;
+        }
+    }
+    return physical_cores;
 #endif
     unsigned int n_threads = std::thread::hardware_concurrency();
     return n_threads > 0 ? (n_threads <= 4 ? n_threads : n_threads / 2) : 4;
@@ -98,6 +113,11 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
     #if defined(GGML_USE_CUBLAS)
         ggml_cuda_set_max_gpus(LLAMA_MAX_DEVICES); // default
     #endif
+    params.n_threads = get_num_physical_cores();
+    // until thread scheduling is improved, these numbers are around the optimal (for huge batch processing increase -t manually)
+    if (params.n_threads > 8) params.n_threads = 4;
+    if (params.n_threads > 4) params.n_threads = 2;
+    
 
     for (int i = 1; i < argc; i++) {
         arg = argv[i];
@@ -245,7 +265,7 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
                 break;
             }
             params.n_batch = std::stoi(argv[i]);
-            params.n_batch = std::min(512, params.n_batch);
+            params.n_batch = std::min(1024+128, params.n_batch); // appears to work fine with scratch buffer, keep in eye
         } else if (arg == "--keep") {
             if (++i >= argc) {
                 invalid_param = true;
@@ -331,7 +351,7 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
             }
             #ifdef GGML_USE_CUBLAS
             params.mb_reserve_gpu_main = std::stoi(argv[i]);
-            ggml_cuda_set_vram_reserved((size_t)params.mb_reserve_gpu_main * 1024*1024);
+            ggml_cuda_set_vram_reserved(params.mb_reserve_gpu_main * 1024*1024);
             #else
             fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. VRAM not available.\n");
             #endif
@@ -383,7 +403,7 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
             params.mem_test = true;
         } else if (arg == "--export") {
             params.export_cgraph = true;
-        } else if (arg == "--debug-timings" || arg == "-dt") {
+        } else if (arg == "--debug-timings" || arg == "--display-timings" || arg == "-dt") {
             if (++i >= argc) {
                 params.debug_timings = 1;
             } else
@@ -547,7 +567,7 @@ void gpt_print_usage(int /*argc*/, char ** argv, const gpt_params & params) {
     fprintf(stderr, "  -mg i, --main-gpu i   the GPU to use for scratch and small tensors (0 = first)\n" );
     fprintf(stderr, "  --override-max-gpu N\n");
     fprintf(stderr, "                        limits the number of GPUs visible (allows to disable multi/single GPU processing)\n");
-    fprintf(stderr, "  --gpu-reserve-mb-main override reserved VRAM MB for main GPU (defaults to first GPU)\n");
+    fprintf(stderr, "  --gpu-reserve-mb-main override reserved total VRAM MB (can be negative if your driver supports swapping into RAM) \n");
     //fprintf(stderr, "  --gpu_reserve_mb_other override reserved VRAM MB for other GPUs (for multi GPU systems)\n");
 #endif
     fprintf(stderr, "  --mtest               compute maximum memory usage\n");

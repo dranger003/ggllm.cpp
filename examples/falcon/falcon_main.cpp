@@ -319,14 +319,14 @@ fprintf(stderr, "| %10s | %5s | %4s | %4s | %4s | %4s | %4s | %4s | %4s | %4s | 
 fprintf(stderr, "+------------+-------+-------+-------+-------+-------+-------+-------+-------+------+------+--------+---------+\n");
 fprintf(stderr, "|            | %5d | %.3f | %.3f | %.3f | %5d | %.3f | %.3f | %.3f | %.2f | %4d | %.4f | %.5f |\n", 
                 params.repeat_last_n, params.repeat_penalty, params.presence_penalty, params.frequency_penalty, params.top_k, params.tfs_z, params.top_p, params.typical_p, params.temp, params.mirostat, params.mirostat_eta, params.mirostat_tau);
-fprintf(stderr, "+============+=======+=======+=======+=======+=======+=======+====---+-------+------+------+--------+---------+\n");
-  
-fprintf(stderr, "| %10s | %7s | %8s | %6s | %6s | %10s |\n", 
-                "Generation", "n_ctx", "n_batch", "n_keep","prompt","seed");
-fprintf(stderr, "+------------+---------+----------+--------+--------+------------+\n");
-fprintf(stderr, "|            | %7d | %8d | %6d | %6zu | %10d |\n",
+fprintf(stderr, "+============+=======+=======+=======+=======+=======+=======+-------+-------+------+------+--------+---------+\n");
+
+fprintf(stderr, "| %10s | %5s | %5s | %5s | %5s | %13s |\n", 
+                "Generation", "Ctx", "Batch", "Keep","Prmpt","Seed");
+fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+\n");  
+fprintf(stderr, "|            | %5d | %5d | %5d | %5zu | %13d |\n",
                 n_ctx, params.n_batch, params.n_keep, embd_inp.size(),params.seed);
-fprintf(stderr, "+------------+---------+----------+--------+--------+------------+\n");
+fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+\n");  
 
     if (n_ctx < (int)(params.n_predict + embd_inp.size())) {
         fprintf(stderr, "%s: Warning: context is smaller than expected generation, will cause delays\n", __func__);
@@ -439,11 +439,6 @@ fprintf(stderr, "+------------+---------+----------+--------+--------+----------
                     embd.erase(embd.begin(), embd.begin() + i);
                 }
             }
-            // We have buffers from the warmup run that won't all align with a batched run 
-#if defined(GGML_USE_CUBLAS)
-            if (params.n_batch > 1 && embd.size() > 1)
-                ggml_cuda_pool_free_all(-1);
-#endif
             // evaluate tokens in batches
             // embd is typically prepared beforehand to fit within a batch, but not always
             for (int i = 0; i < (int) embd.size(); i += params.n_batch) {
@@ -459,11 +454,6 @@ fprintf(stderr, "+------------+---------+----------+--------+--------+----------
                 }
                 n_past += n_eval;
             }
-#if defined(GGML_USE_CUBLAS)
-            // frees unused allocations, those during batch processing are of different size than single token eval
-            if (params.n_batch > 1 && embd.size() > 1)
-                ggml_cuda_pool_free_all(-1);
-#endif
             if (embd.size() > 0 && !path_session.empty()) {
                 session_tokens.insert(session_tokens.end(), embd.begin(), embd.end());
                 n_session_consumed = session_tokens.size();
