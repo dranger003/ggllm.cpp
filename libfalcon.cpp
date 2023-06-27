@@ -1556,7 +1556,7 @@ static bool falcon_eval_internal(
             int debug_timings) {
 
     const int64_t t_start_us = ggml_time_us();
-    const bool use_broadcasting = true; // switched from interleaving repeat to broadcasting
+    const bool use_broadcasting = (n_tokens == 1); // switched from interleaving repeat to broadcasting
 
     const int N = n_tokens;
     //const int N = embd_inp.size();
