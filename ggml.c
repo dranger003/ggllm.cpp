@@ -18125,6 +18125,25 @@ void ggml_graph_print_impl(const struct ggml_cgraph * cgraph, bool print_nodes, 
         
         char *c_perf_impact = (perf_array[i] > perf_mean + perf_sd) ? "(Slow)" : ((perf_array[i] < perf_mean - perf_sd) ? "(Fast)" : "");
 
+        char str_device_info[128];
+        if (node->meta.info_op_on_device >= 0 || node->src0->backend!=GGML_BACKEND_CPU) 
+        {
+            sprintf(str_device_info, "[GPU");
+            if (node->meta.cuda_perf_mal_mul_type > 0)
+            {
+                if (node->meta.cuda_perf_mal_mul_type == 1)
+                    sprintf(str_device_info, "%s (%s)", str_device_info, "xQ");
+                if (node->meta.cuda_perf_mal_mul_type == 16)
+                    sprintf(str_device_info, "%s (%s)", str_device_info, "xB16");
+                if (node->meta.cuda_perf_mal_mul_type == 32)
+                    sprintf(str_device_info, "%s (%s)", str_device_info, "xB32");
+            }
+            sprintf(str_device_info, "%s]", str_device_info);
+        }
+        else 
+        {
+            sprintf(str_device_info, "[CPU]");
+        }
         // the printed dimensions are not necessarily correct, needs an improvement
         if (print_nodes)
         GGML_PRINT(" - %3d: [%6" PRId64 ",%6" PRId64 ",%4" PRId64 "]x[%6" PRId64 ",%6" PRId64 ",%4" PRId64 "]=[%6" PRId64 ",%6" PRId64 ",%4" PRId64 "] %16s %s (%3d) cpu = %7.3f / %7.3f ms, wall = %7.3f / %7.3f ms [%3u %s] %5s %7s\n",
@@ -18137,7 +18156,7 @@ void ggml_graph_print_impl(const struct ggml_cgraph * cgraph, bool print_nodes, 
                 (double) node->perf_cycles  / (double) ggml_cycles_per_ms() / (double) node->perf_runs,
                 (double) node->perf_time_us / 1000.0,
                 (double) node->perf_time_us / 1000.0 / node->perf_runs,
-                node->meta.layer_id+1, (node->name) ,(node->meta.info_op_on_device >= 0 || node->src0->backend!=GGML_BACKEND_CPU) ? "GPU" : "CPU",c_perf_impact);
+                node->meta.layer_id+1, (node->name) ,str_device_info,c_perf_impact);
     }
 
      if (print_leafs) 

@@ -505,12 +505,9 @@ struct falcon_file_loader {
         {
             hparams.ftype = (enum llama_ftype) file.read_u32();
         }
-        
-        // hparams.ftype %= GGML_QNT_VERSION_FACTOR;
-        }
+    }
     void read_vocab() {
         vocab.id_to_token.resize(hparams.n_vocab);
-
         for (uint32_t i = 0; i < (uint32_t)hparams.n_vocab; i++) {
             uint32_t len = file.read_u32();
             std::string word = file.read_string(len);
@@ -519,13 +516,20 @@ struct falcon_file_loader {
             if (file_version >= LLAMA_FILE_VERSION_GGMF_V1) {
                 file.read_raw(&score, sizeof(score));
             }
-
             vocab.token_to_id[word] = i;
+            // printf("falcon.cpp: vocab %d %s %f\n", i, word.c_str(), score);
 
             auto & tok_score = vocab.id_to_token[i];
             tok_score.tok = std::move(word);
             tok_score.score = score;
         }
+        if (hparams.n_vocab == 65025 && vocab.id_to_token[65024].tok == "[PAD]") {
+            // this is a hack to support the old 65025 vocab size
+            vocab.id_to_token.resize(65024);
+            vocab.token_to_id.erase("[PAD]");
+            hparams.n_vocab = 65024;
+        }
+        //TODO: the tensor word_embeddings needs to be shaved to 65024
     }
     void read_tensor_metadata(size_t file_idx, llama_load_tensors_map & tensors_map) {
         while (file.tell() < file.size) {
@@ -713,10 +717,14 @@ struct llama_model_loader {
             throw std::runtime_error(std::runtime_error(format("falcon.cpp: tensor '%s' is missing from model", name.c_str())));
         }
         falcon_load_tensor & lt = tensors_map.tensors.at(it->second);
+        // special case - wizard padding token - todo: move into quantizer only
+        
+        if (lt.ne.size() != 2 || ne.size() != 2 || !((ne[0] == 8192 && ne[1] == 65024  && lt.ne[0] == 8192 && lt.ne[1] == 65025) || (ne[0] == 4544 && ne[1] == 65024  && lt.ne[0] == 4544 && lt.ne[1] == 65025)))
         if (lt.ne != ne) {
             throw std::runtime_error(format("falcon.cpp: tensor '%s' has wrong shape; expected %s, got %s",
                          name.c_str(), llama_format_tensor_shape(ne).c_str(), llama_format_tensor_shape(lt.ne).c_str()));
         }
+        // printf("Tensor: %-70s %s\n", name.c_str(), llama_format_tensor_shape(lt.ne).c_str());
 
         return get_tensor_for(lt, backend);
     }
@@ -727,11 +735,26 @@ struct llama_model_loader {
             ggml_set_no_alloc(ggml_ctx, true);
         }
         if (lt.ne.size() == 2) {
-            tensor = ggml_new_tensor_2d(ggml_ctx, lt.type, lt.ne.at(0), lt.ne.at(1));
+            if ( lt.ne[0] == 8192 && lt.ne[1] == 65025 && (lt.name.find("transformer.word_embeddings.weight") == 0 || lt.name.find("lm_head.weight") == 0))
+            {
+                // TODO: evaluate if we lose perplexity from the changed shape
+                tensor = ggml_new_tensor_2d(ggml_ctx, lt.type, 8192, 65024);
+                fprintf(stderr, "falcon.cpp: Special mode: Wizard-type finetuning - changing tensor shape\n");
+            } else
+            if ( lt.ne[0] == 4544 && lt.ne[1] == 65025 && (lt.name.find("transformer.word_embeddings.weight") == 0 || lt.name.find("lm_head.weight") == 0))
+            {
+                // TODO: evaluate if we lose perplexity from the changed shape
+                tensor = ggml_new_tensor_2d(ggml_ctx, lt.type, 4544, 65024);
+                fprintf(stderr, "falcon.cpp: Special mode: Wizard-type finetuning - changing tensor shape\n");
+            } else
+            {
+                tensor = ggml_new_tensor_2d(ggml_ctx, lt.type, lt.ne.at(0), lt.ne.at(1));
+            }
         } else {
             LLAMA_ASSERT(lt.ne.size() == 1);
             tensor = ggml_new_tensor_1d(ggml_ctx, lt.type, lt.ne.at(0));
         }
+        
         ggml_set_name(tensor, lt.name.c_str());
         if (lt.name.find("transformer.h.") == 0) {
             size_t dot_pos = lt.name.find('.', 16);
@@ -1199,12 +1222,11 @@ static void falcon_model_load_internal(
 #endif
 
     
-    size_t vram_reserved=128*MB;    // that amount of VRAM is to stay free on GPU (needs to become a user parameter)
-    size_t vram_overhead = 256*MB;    // this amount of vram is estimated for non weight storage buffers on VRAM
+    int vram_reserved=128*MB;    // that amount of VRAM is to stay free on GPU (needs to become a user parameter)
+    size_t vram_overhead = 32*MB;    // this amount of vram is estimated for non weight storage buffers on VRAM
     size_t vram_free = 0; // for vram simulation below
     size_t vram_total = 0; // for vram simulation below
 #if defined(GGML_USE_CUBLAS)
-    vram_overhead=0; 
     ggml_cuda_update_gpu_status(-1);
     const GPUStatus *system_gpu_status = ggml_cuda_get_system_gpu_status();
     vram_free = system_gpu_status->total_free_vram;
@@ -1219,34 +1241,45 @@ static void falcon_model_load_internal(
     {
         fprintf(stderr, "%s: VRAM free: %7.2f MB  of %7.2f MB (in use: %7.2f MB)\n", __func__, system_gpu_status->total_free_vram/MB*1.0, system_gpu_status->total_vram/MB*1.0, (system_gpu_status->total_vram-system_gpu_status->total_free_vram)/MB*1.0);
 
-        if (model.type == FALCON_40B && n_batch > 1)
+        if (model.type == FALCON_40B)
         {
-            if (model.hparams.ftype == LLAMA_FTYPE_ALL_F32)
-            {
-                // vram_overhead += 128*MB; 
-            } else if (model.hparams.ftype == LLAMA_FTYPE_MOSTLY_Q8_0)
-            {
-                // vram_overhead += (1024 + 288 + 256) * MB; // todo: when can manually create one 1024 buffer manually, saves 500+mb vram
-                vram_overhead += 2900*MB;
-            } else if (model.hparams.ftype >= 10) 
-            {
-                vram_overhead += 4000*MB; // all k type
-            } else
-                vram_overhead += 4500*MB; // all non k type
-            fprintf(stderr, "%s: INFO: using n_batch larger than 1 requires additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
-        }
-        if (model.type == FALCON_7B && n_batch > 1)
+            // if lm_head is not offloaded we'd save vram_overhead += (1016+144)*MB; 
+            if (model.hparams.ftype != LLAMA_FTYPE_ALL_F32)
+            { 
+                if (n_batch > 1)
+                {
+                    vram_overhead += (1016+512+144+50)*MB; 
+                    fprintf(stderr, "%s: INFO: using n_batch larger than 1 requires additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
+                } else
+                {
+                    if (hparams.n_vocab%2)
+                    {
+                        vram_overhead += (1016+512+144+50)*MB;
+                        fprintf(stderr, "%s: INFO: unoptimized fine-tune weights requires additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
+                    }
+                }
+            }
+            
+        } 
+        if (model.type == FALCON_7B)
         {
-            //vram_overhead += (315 + 80 + 78) * MB; // todo: manually create a 315mb buffer, saves 160mb vram
-            if (model.hparams.ftype == LLAMA_FTYPE_ALL_F32)
-            {
-
-            } else if (model.hparams.ftype == LLAMA_FTYPE_MOSTLY_Q8_0)
-            {
-                vram_overhead += 1700*MB; // 1500-1700  (k type does not exist yet)
-            } else
-                vram_overhead += 1500*MB; // all others used 200mb less than 8 bit for 7B
-            fprintf(stderr, "%s: INFO: using n_batch larger than 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
+            // if lm_head is not offloaded we'd save vram_overhead += (563+41)*MB; 
+            if (model.hparams.ftype != LLAMA_FTYPE_ALL_F32)
+            { 
+                if (n_batch > 1)
+                {
+                    vram_overhead += (157+563+41)*MB; 
+                    fprintf(stderr, "%s: INFO: using n_batch larger than 1 will require additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
+                } else
+                {
+                    if (hparams.n_vocab%2)
+                    {
+                            vram_overhead += (157+563+41)*MB; 
+                            fprintf(stderr, "%s: INFO: unoptimized fine-tune weights requires additional VRAM per device: %7.2f MB\n", __func__, vram_overhead/MB*1.0);
+                    }
+                }
+            }
+            
         }
     } else
     {
@@ -1260,6 +1293,7 @@ static void falcon_model_load_internal(
     // prepare memory for the weights
     size_t vram_weights = 0;
     size_t vram_scratch = 0;
+    size_t vram_output = 0; // for display only
 
         (void) vram_scratch;
         (void) n_batch;
@@ -1309,24 +1343,28 @@ static void falcon_model_load_internal(
             backend_norm = GGML_BACKEND_CPU;
             backend_output = GGML_BACKEND_CPU;
         }
+        //backend_output=GGML_BACKEND_CPU;// 1GB vram for 16 bin cublas (with and without n_batch)
 
-        
+        vram_output=0;
         // "output" tensor
         {
             
             model.output_norm = ml->get_tensor("transformer.ln_f.weight", {n_embd}, backend_norm);
             model.output_norm_b = ml->get_tensor("transformer.ln_f.bias", {n_embd}, backend_norm);
+            // lm_head does not run in quantized kernels - cuda currently converts it to 32 bit which will cause 2GB vram overhead on 40B
             model.lm_head = ml->get_tensor("lm_head.weight", {n_embd, n_vocab}, backend_output);
         }
 
         if (backend_norm != GGML_BACKEND_CPU)
         {
             vram_weights += ggml_nbytes(model.output_norm) + ggml_nbytes(model.output_norm_b);
+            vram_output += ggml_nbytes(model.output_norm) +  ggml_nbytes(model.output_norm_b);
             vram_free -= ggml_nbytes(model.output_norm) +  ggml_nbytes(model.output_norm_b);
         }
         if (backend_output != GGML_BACKEND_CPU)
         {
             vram_weights += ggml_nbytes(model.lm_head);
+            vram_output += ggml_nbytes(model.lm_head);
             vram_free -= ggml_nbytes(model.lm_head);
             fprintf(stderr, "%s: Offloading Output head tensor (%zd MB)\n", __func__, ggml_nbytes(model.lm_head)/MB);
         }
@@ -1384,18 +1422,24 @@ static void falcon_model_load_internal(
             if (backend != GGML_BACKEND_CPU)
             {
                 size_t vram_layer = 0;
-                vram_layer = calculate_layer_vram_bytes(layer);
+                vram_layer = calculate_layer_vram_bytes(layer)*1.035; // 3.5%-4.0% too small for some reason
                 vram_weights += vram_layer;
                 vram_free = (vram_layer > vram_free) ? 0 : vram_free - vram_layer; // simulate the layer being loaded in VRAM
                 // test if we have enough VRAM to offload the next layer
-                if (i < n_layer && vram_free <= (vram_overhead+vram_scratch+vram_reserved+vram_layer))
+                
+                if (i < n_layer && (int64_t)vram_free <= (int64_t)(vram_overhead+vram_scratch+vram_reserved+vram_layer))
                 {
-                    fprintf(stderr, "INFO: Not enough VRAM to load all requested layers - at layer %d of %d: skipping\n", i, n_layer);
+                    int64_t missing_vram_mb =
+                        (vram_layer * n_layer + vram_scratch + vram_reserved + vram_overhead + vram_output) > system_gpu_status->total_free_vram ?
+                        ((vram_layer * n_layer + vram_scratch + vram_reserved + vram_overhead + vram_output) - system_gpu_status->total_free_vram) / MB + 1 :
+                        0;
+                    fprintf(stderr, "%s: INFO: not enough VRAM to offload layer %d (missing %zd MB)\n", __func__, i+1, missing_vram_mb);
+
                     model.n_gpu_layers = n_gpu_layers;
                     i_gpu_last = i;
                     model.i_gpu_last = i_gpu_last;
                     n_gpu_layers = i_gpu_last - i_gpu_start;
-                    printf("INFO: %d layers will be offloaded to GPU (layers %d to %d)\n", n_gpu_layers, i_gpu_start+1, i_gpu_last+1);
+                    fprintf(stderr,"%s: INFO: %d layers will be offloaded to GPU (layers %d to %d)\n", __func__, n_gpu_layers, i_gpu_start+1, i_gpu_last+1);
                 }
             }
 
@@ -1688,14 +1732,13 @@ static bool falcon_eval_internal(
 
             struct ggml_tensor * K = ggml_permute(
                 ctx0,
-                ggml_reshape_3d(
+                ggml_view_3d(
                     ctx0,
-                    ggml_view_1d(ctx0, kv_self.k, (n_past + N) * n_head_kv * head_dim,
-                                 il * n_ctx *
-                                     ggml_element_size(kv_self.k) *
-                                     n_head_kv *
-                                     head_dim),
-                    head_dim, n_head_kv, n_past + N),
+                    kv_self.k,
+                    head_dim, n_head_kv, n_past + N,
+                    head_dim * sizeof_wtype,
+                    head_dim * n_head_kv * sizeof_wtype,
+                    il * n_ctx * ggml_element_size(kv_self.k) * n_head_kv * head_dim),
                 0, 2, 1, 3);
 
             // K * Q
@@ -1731,14 +1774,13 @@ static bool falcon_eval_internal(
             // V_trans = Vmem.view(n_embd/n_head, n_head, n_past + N).permute(1, 2, 0, 3).contiguous()
             struct ggml_tensor* V = ggml_permute(
                 ctx0,
-                ggml_reshape_3d(
+                ggml_view_3d(
                     ctx0,
-                    ggml_view_1d(ctx0, kv_self.v, (n_past + N) * n_head_kv * head_dim,
-                                 il * n_ctx *
-                                     ggml_element_size(model.kv_self.v) *
-                                     n_head_kv *
-                                     head_dim),
-                    head_dim, n_head_kv, n_past + N),
+                    kv_self.v,
+                    head_dim, n_head_kv, n_past + N,
+                    head_dim * sizeof_wtype,
+                    head_dim * n_head_kv * sizeof_wtype,
+                    il * n_ctx * ggml_element_size(kv_self.v) * n_head_kv * head_dim),
                 0, 2, 1, 3);
 
 
@@ -1856,9 +1898,9 @@ static bool falcon_eval_internal(
     // run the computation
     ggml_build_forward_expand(&gf, cur);
     
-
     ggml_backend lm_head_backend = model.lm_head->backend;
-    if (model.type == FALCON_7B && (n_tokens > 1))
+    // uneven lm_head from manually added tokens causes cublas errors with 7B
+    if (model.type == FALCON_7B && (n_tokens > 1) && model.lm_head->ne[1]%2 != 0)
         model.lm_head->backend = GGML_BACKEND_CPU;  // cublas fails
         
 #ifdef GGML_USE_METAL
@@ -3556,6 +3598,21 @@ int falcon_eval(
                          int   n_tokens,
                          int   n_past,
                          int   n_threads, int debug_timings) {
+    #if defined(GGML_USE_CUBLAS)
+    static int no_purge_counter=0; // once the system is stable for 3 iterations, we stop testing
+    if (no_purge_counter < 3 || n_past%50==0) {
+        int purges=0;
+        const GPUStatus *status = ggml_cuda_get_system_gpu_status();
+        for (int i = 0; i < status->num_devices; i++) {
+            purges += ggml_cuda_pool_purge_buffers_with_access_count(1,i);
+            ggml_cuda_pool_reset_all_counters(i);
+        }
+        if (!purges && n_tokens == 1) 
+            no_purge_counter++;
+        else
+            no_purge_counter=0;
+    }
+    #endif
     if (!falcon_eval_internal(*ctx, tokens, n_tokens, n_past, n_threads, nullptr, debug_timings)) {
         fprintf(stderr, "%s: failed to eval\n", __func__);
         return 1;
@@ -3686,13 +3743,13 @@ void llama_reset_timings(struct falcon_context * ctx) {
 const char * falcon_print_system_info(int n_threads, int n_cores) {
     static std::string s;
 
-    s  = "+---------------+-----+------+--------+-------------+-------------+-----+------+---------+------+---------+------+------+------+-----+\n";
-    s += "|  System Info  | AVX | AVX2 | AVX512 | AVX512_VBMI | AVX512_VNNI | FMA | NEON | ARM_FMA | F16C | FP16_VA | SIMD | BLAS | SSE3 | VSX |\n";
-    s += "+---------------+-----+------+--------+-------------+-------------+-----+------+---------+------+---------+------+------+------+-----+\n";
+    s  = "+------------+-----+------+--------+-------------+-------------+-----+------+---------+------+---------+------+------+------+-----+\n";
+    s += "| Syst. Info | AVX | AVX2 | AVX512 | AVX512_VBMI | AVX512_VNNI | FMA | NEON | ARM_FMA | F16C | FP16_VA | SIMD | BLAS | SSE3 | VSX |\n";
+    s += "+------------+-----+------+--------+-------------+-------------+-----+------+---------+------+---------+------+------+------+-----+\n";
     //s += "|              | ";
     // instead we write threads: x/x (we have 14 chars, we need to use a formatstring to keep length):
     char buf[20];
-    snprintf(buf, sizeof(buf), "| %2d/%2d threads | ", n_threads, n_cores);
+    snprintf(buf, sizeof(buf), "| %2d/%2d thrd | ", n_threads, n_cores);
     s += buf;
     s += std::to_string(ggml_cpu_has_avx()) + "   | ";
     s += std::to_string(ggml_cpu_has_avx2()) + "    | ";
@@ -3708,7 +3765,7 @@ const char * falcon_print_system_info(int n_threads, int n_cores) {
     s += std::to_string(ggml_cpu_has_blas()) + "    | ";
     s += std::to_string(ggml_cpu_has_sse3()) + "    | ";
     s += std::to_string(ggml_cpu_has_vsx()) + "   |\n";
-    s += "+---------------+-----+------+--------+-------------+-------------+-----+------+---------+------+---------+------+------+------+-----+\n";
+    s += "+------------+-----+------+--------+-------------+-------------+-----+------+---------+------+---------+------+------+------+-----+\n";
 
     return s.c_str();
 }

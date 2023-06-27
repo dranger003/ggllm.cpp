@@ -31,7 +31,7 @@ struct gpt_params {
     int32_t n_gpu_layers                   = 200;  // number of layers to store in VRAM
     int32_t main_gpu                       = 0;    // the GPU that is used for scratch and small tensors
     float   tensor_split[LLAMA_MAX_DEVICES] = {0}; // how split tensors should be distributed across GPUs
-    int32_t n_max_gpu                      = 16;    // maximum number of GPUs to use
+    int n_max_gpu                      = 16;    // maximum number of GPUs to use
     int32_t mb_reserve_gpu_main            = false; // override reserved megabytes of VRAM for the main GPU
     // int     mb_reserve_gpu_other           = false; // override reserved megabytes of VRAM for secondary GPUs
 

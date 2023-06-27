@@ -351,7 +351,7 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
             }
             #ifdef GGML_USE_CUBLAS
             params.mb_reserve_gpu_main = std::stoi(argv[i]);
-            ggml_cuda_set_vram_reserved((size_t)params.mb_reserve_gpu_main * 1024*1024);
+            ggml_cuda_set_vram_reserved(params.mb_reserve_gpu_main * 1024*1024);
             #else
             fprintf(stderr, "warning: falcon.cpp was compiled without cuBLAS. VRAM not available.\n");
             #endif
@@ -567,7 +567,7 @@ void gpt_print_usage(int /*argc*/, char ** argv, const gpt_params & params) {
     fprintf(stderr, "  -mg i, --main-gpu i   the GPU to use for scratch and small tensors (0 = first)\n" );
     fprintf(stderr, "  --override-max-gpu N\n");
     fprintf(stderr, "                        limits the number of GPUs visible (allows to disable multi/single GPU processing)\n");
-    fprintf(stderr, "  --gpu-reserve-mb-main override reserved VRAM MB for main GPU (defaults to first GPU)\n");
+    fprintf(stderr, "  --gpu-reserve-mb-main override reserved total VRAM MB (can be negative if your driver supports swapping into RAM) \n");
     //fprintf(stderr, "  --gpu_reserve_mb_other override reserved VRAM MB for other GPUs (for multi GPU systems)\n");
 #endif
     fprintf(stderr, "  --mtest               compute maximum memory usage\n");
