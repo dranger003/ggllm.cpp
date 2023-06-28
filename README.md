@@ -78,8 +78,8 @@ wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/
 dpkg -i cuda-keyring_1.0-1_all.deb
 apt-get update; apt-get -y install cuda
 # you might need to add it to your path:
-export LD_LIBRARY_PATH="/usr/local/cuda-12/lib64:$LD_LIBRARY_PATH"
-export PATH="/usr/local/cuda-12/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+export PATH="/usr/local/cuda/bin:$PATH"
 # now start with a fresh cmake and all should work 
 ```
 
