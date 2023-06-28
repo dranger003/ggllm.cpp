@@ -1952,8 +1952,8 @@ static bool falcon_eval_internal(
             if ((first && debug_timings <=2) || debug_timings > 2)
             {
                 first = false;
-                ggml_graph_print_impl(&gf,true,false,GGML_OP_MUL_MAT); // GGML_OP_MUL_MAT / GGML_OP_NONE
-                // ggml_graph_print_impl(&gf,true,false,GGML_OP_NONE); // GGML_OP_MUL_MAT / GGML_OP_NONE
+                //ggml_graph_print_impl(&gf,true,false,GGML_OP_MUL_MAT); // GGML_OP_MUL_MAT / GGML_OP_NONE
+                ggml_graph_print_impl(&gf,true,false,GGML_OP_NONE); // GGML_OP_MUL_MAT / GGML_OP_NONE
             }
         }
         // requires GGML_PERF to be defined for actual timing information
