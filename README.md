@@ -63,7 +63,7 @@ Video tutorial for Windows compilation without WSL:
 https://www.youtube.com/watch?v=BALw669Qeyw     
 Another demo of Falcon 40B at 5 bit quantization:  
 https://www.youtube.com/watch?v=YuTMFL1dKgQ&ab_channel=CmpNct   
-The speed can be seen at 35 tokens/sec start gradually lowering over context - that's still a implementation problem being worked on.
+The speed can be seen at 35 tokens/sec start gradually lowering over context - that has been solved in the meantime
 
 3) Installing on WSL (Windows Subsystem for Linux)
 ```
@@ -78,8 +78,8 @@ wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/
 dpkg -i cuda-keyring_1.0-1_all.deb
 apt-get update; apt-get -y install cuda
 # you might need to add it to your path:
-export LD_LIBRARY_PATH="/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH"
-export PATH="/usr/local/cuda-12.1/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/cuda-12/lib64:$LD_LIBRARY_PATH"
+export PATH="/usr/local/cuda-12/bin:$PATH"
 # now start with a fresh cmake and all should work 
 ```
 
