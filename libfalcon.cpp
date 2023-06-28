@@ -2044,21 +2044,24 @@ static_assert(std::is_trivially_copyable<llama_sp_symbol>::value, "llama_sp_symb
 struct llama_sp_bigram {
     struct comparator {
         bool operator()(llama_sp_bigram & l, llama_sp_bigram & r) {
-            return (l.score < r.score) || (l.score == r.score && l.left > r.left);
+            //return (l.score < r.score) || (l.score == r.score && l.left > r.left);
+            //printf("Comparing '%s' with '%s' :  Size %zu : %zu, Left %d : %d, Right %d : %d == %s\n", l.text.c_str(), r.text.c_str(), l.size, r.size, l.left, r.left, l.right, r.right, (l.left > r.left || (l.size < r.size))? "true" : "false");
+            return l.left > r.left || (l.size < r.size);
         }
     };
     using queue_storage = std::vector<llama_sp_bigram>;
     using queue = std::priority_queue<llama_sp_bigram, queue_storage, comparator>;
     llama_sp_symbol::index left;
     llama_sp_symbol::index right;
+    std::string text;
     float score;
     size_t size;
 };
 
 // original implementation:
 // https://github.com/ggerganov/llama.cpp/commit/074bea2eb1f1349a0118239c4152914aecaa1be4
-struct llama_tokenizer {
-    llama_tokenizer(const falcon_vocab & vocab): vocab_(vocab) {}
+struct falcon_tokenizer {
+    falcon_tokenizer(const falcon_vocab & vocab): vocab_(vocab) {}
 
     void tokenize(const std::string & text, std::vector<falcon_vocab::id> & output) {
         // split string into utf8 chars
@@ -2079,6 +2082,7 @@ struct llama_tokenizer {
         // seed the work queue with all possible 2-character tokens.
         for (size_t i = 1; i < symbols_.size(); ++i) {
             try_add_bigram(i - 1, i);
+            // printf("bigram = '%.*s%.*s'\n", (int) symbols_[i-1].n, symbols_[i-1].text, (int) symbols_[i].n, symbols_[i].text);
         }
 
         // keep substituting the highest frequency pairs for as long as we can.
@@ -2086,38 +2090,72 @@ struct llama_tokenizer {
             auto bigram = work_queue_.top();
             work_queue_.pop();
 
-            auto & left_sym = symbols_[bigram.left];
-            auto & right_sym = symbols_[bigram.right];
+            auto & left_symbol = symbols_[bigram.left];
+            auto & right_symbol = symbols_[bigram.right];
 
             // if one of the symbols already got merged, skip it.
-            if (left_sym.n == 0 || right_sym.n == 0 ||
-                left_sym.n + right_sym.n != bigram.size) {
+            if (left_symbol.n == 0 || right_symbol.n == 0 ||
+                left_symbol.n + right_symbol.n != bigram.size) {
                 continue;
             }
-
+            // we now merge tokens in the queue with each other to form longer tokens
             // merge the right sym into the left one
-            left_sym.n += right_sym.n;
-            right_sym.n = 0;
+            left_symbol.n += right_symbol.n; // update the length of the left symbol to incorporate the right one
+            //printf("Merging '%.*s' and '%.*s' into '%.*s'\n", (int) left_symbol.n, left_symbol.text, (int) right_symbol.n, right_symbol.text, (int) left_symbol.n, left_symbol.text);
 
-            //printf("left = '%*s' size = %zu\n", (int) left_sym.n, left_sym.text, bigram.size);
-
+            right_symbol.n = 0;
             // remove the right sym from the chain
-            left_sym.next = right_sym.next;
-            if (right_sym.next >= 0) {
-                symbols_[right_sym.next].prev = bigram.left;
+            left_symbol.next = right_symbol.next;
+            if (right_symbol.next >= 0) {
+                symbols_[right_symbol.next].prev = bigram.left;
             }
-
             // find more substitutions
-            try_add_bigram(left_sym.prev, bigram.left);
-            try_add_bigram(bigram.left, left_sym.next);
+            try_add_bigram(left_symbol.prev, bigram.left);  // left side of current bigram
+            try_add_bigram(bigram.left, left_symbol.next);  // right side of current bigram           
+        }
+        // Bug: the tokenizer is currently unable to merge tokens if not all sub parts can form vocabulary duplets, also it will form duplets that can make forming a triplet impossible 
+        // Imagine AABBBA where ABBBBA is a token and AA is a token. The tokenizer would create AA B B B A instead of A ABBBA
+        // below is not a full solution to this, but it can merge triplets if no sub-merging happened as in the example before
+        // a real solution is probably not easy to integrate, maybe a hash sorted vocabulary in combination with a lookahead search would be better
+        // this allows to combine the triplet >> AN S WER << into first >> ANSWER << and second >>ANSWER<< - it's certainly not efficient but for a couple hundred tokens it's fast enough for now
+        bool found_triplet = true;
+        while (found_triplet)
+        {
+            found_triplet = false;
+            for (int i = 0; i != -1; i = symbols_[i].next) {
+                auto & symbol = symbols_[i];
+                // triplet
+                if (symbol.prev != -1 && symbol.next != -1) {
+                    auto & left_symbol = symbols_[symbol.prev];
+                    auto & right_symbol = symbols_[symbol.next];
+                    if (left_symbol.n > 0 && right_symbol.n > 0) {
+                        auto token = vocab_.token_to_id.find(std::string(left_symbol.text, left_symbol.n) + std::string(symbol.text, symbol.n) + std::string(right_symbol.text, right_symbol.n));
+                        if (token != vocab_.token_to_id.end()) {
+                            // printf("found triplet token = '%.*s%.*s%.*s'\n", (int) left_symbol.n, left_symbol.text, (int) symbol.n, symbol.text, (int) right_symbol.n, right_symbol.text);
+                            // merge all 3 into the left one and invalidate the others
+                            left_symbol.n += symbol.n + right_symbol.n;
+                            symbol.n = 0;
+                            right_symbol.n = 0;
+                            left_symbol.next = right_symbol.next;
+                            if (right_symbol.next >= 0) {
+                                symbols_[right_symbol.next].prev = symbol.prev;
+                            }
+                            found_triplet = true;
+                        }
+                    }
+                }
+            }
         }
 
         for (int i = 0; i != -1; i = symbols_[i].next) {
             auto & symbol = symbols_[i];
+            if (symbol.n == 0) {
+                continue;
+            }
             auto token = vocab_.token_to_id.find(std::string(symbol.text, symbol.n));
 
             if (token == vocab_.token_to_id.end()) {
-                // output any symbols that did not form tokens as bytes.
+                // output any symbols that did not form tokens as (token) bytes.
                 for (int j = 0; j < (int) symbol.n; ++j) {
                     falcon_vocab::id token_id = static_cast<uint8_t>(symbol.text[j]) + 3;
                     output.push_back(token_id);
@@ -2140,6 +2178,7 @@ private:
         if (token == vocab_.token_to_id.end()) {
             return;
         }
+        //printf("ADDING BI GRAM: '%s' left = '%.*s' right = '%.*s'\n", text.c_str(), (int) symbols_[left].n, symbols_[left].text, (int) symbols_[right].n, symbols_[right].text);
 
         if (static_cast<size_t>((*token).second) >= vocab_.id_to_token.size()) {
             return;
@@ -2150,8 +2189,9 @@ private:
         llama_sp_bigram bigram;
         bigram.left = left;
         bigram.right = right;
-        bigram.score = tok_score.score;
+        bigram.score = tok_score.score; // With falcon that's always 0.0
         bigram.size = text.size();
+        bigram.text = text;
         work_queue_.push(bigram);
     }
 
@@ -2161,7 +2201,7 @@ private:
 };
 
 static std::vector<falcon_vocab::id> falcon_tokenize(const falcon_vocab & vocab, const std::string & text, bool bos) {
-    llama_tokenizer tokenizer(vocab);
+    falcon_tokenizer tokenizer(vocab);
     std::vector<falcon_vocab::id> output;
 
     if (text.empty()) {

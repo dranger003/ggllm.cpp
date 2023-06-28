@@ -248,11 +248,14 @@ int main(int argc, char ** argv) {
     }
 
     // prefix & suffix for instruct mode
-    const auto inp_pfx = ::falcon_tokenize(ctx, "\n\n### Instruction:\n\n", true);
-    const auto inp_sfx = ::falcon_tokenize(ctx, "\n\n### Response:\n\n", false);
+    std::vector<llama_token> inp_pfx;
+    std::vector<llama_token> inp_sfx;
 
     // in instruct mode, we inject a prefix and a suffix to each input by the user
     if (params.instruct) {
+        // todo: instruct mode is different for each type of finetune!
+        inp_pfx = ::falcon_tokenize(ctx, "\n\n### Instruction:\n\n", true);
+        inp_sfx = ::falcon_tokenize(ctx, "\n\n### Response:\n\n", false);
         params.interactive_first = true;
         params.antiprompt.push_back("### Instruction:\n\n");
     }
@@ -270,12 +273,18 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "%s: prompt: '%s'\n", __func__, params.prompt.c_str());
         fprintf(stderr, "%s: number of tokens in prompt = %zu\n", __func__, embd_inp.size());
         for (int i = 0; i < (int) embd_inp.size(); i++) {
-            fprintf(stderr, "%6d -> '%s'\n", embd_inp[i], falcon_token_to_str(ctx, embd_inp[i]));
+            const char *c_tk = falcon_token_to_str(ctx, embd_inp[i]);
+            if (*c_tk == '\n') c_tk="\\n";
+            if (*c_tk == '\r') c_tk="\\r";
+            fprintf(stderr, "%6d -> '%s'\n", embd_inp[i], c_tk);
         }
         if (params.n_keep > 0) {
         fprintf(stderr, "%s: static prompt based on n_keep: '", __func__);
             for (int i = 0; i < params.n_keep; i++) {
-                fprintf(stderr, "%s", falcon_token_to_str(ctx, embd_inp[i]));
+                            const char *c_tk = falcon_token_to_str(ctx, embd_inp[i]);
+            if (*c_tk == '\n') c_tk="\\n";
+            if (*c_tk == '\r') c_tk="\\r";
+                fprintf(stderr, "%s", c_tk);
             }
             fprintf(stderr, "'\n");
         }
