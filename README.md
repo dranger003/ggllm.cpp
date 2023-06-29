@@ -25,6 +25,11 @@ https://huggingface.co/tiiuae/falcon-7b/
 https://huggingface.co/tiiuae/falcon-40b-instruct  
 https://huggingface.co/tiiuae/falcon-7b-instruct  
 
+**OpenAssistant here:**
+https://huggingface.co/OpenAssistant
+_Download the 7B or 40B Falcon version, use falcon_convert.py (latest version) in 32 bit mode, then falcon_quantize to convert it to ggml-v3_
+
+
 **Conversion:**
 1) use falcon_convert.py to produce a GGML v1 binary from HF - not recommended to be used directly
 2) use examples/falcon_quantize to convert these into memory aligned GGMLv3 binaries of your choice including mmap support from there on  
