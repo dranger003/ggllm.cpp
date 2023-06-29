@@ -26,6 +26,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <signal.h>
+#include <shellapi.h>
 #endif
 
 static console_state con_st;
@@ -67,6 +68,27 @@ void sigint_handler(int signo) {
 #endif
 
 int main(int argc, char ** argv) {
+    #if defined(_WIN32)
+    SetConsoleOutputCP(CP_UTF8);
+    int wargc;
+    wchar_t** wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+    if (wargv == nullptr)
+    {
+        fprintf(stderr, "Failed to parse command line\n");
+        exit(1);
+    }
+    // Convert from UTF-16 to UTF-8
+    std::vector<char*> utf8argv(wargc);
+    for (int i = 0; i < wargc; ++i)
+    {
+        int size = WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, nullptr, 0, nullptr, nullptr);
+        utf8argv[i] = new char[size];
+        WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, utf8argv[i], size, nullptr, nullptr);
+    }
+    LocalFree(wargv);
+    // Use utf8argv instead of argv
+    argv = utf8argv.data();
+    #endif
     gpt_params params;
 
     if (gpt_params_parse(argc, argv, params) == false) {
@@ -164,7 +186,7 @@ int main(int argc, char ** argv) {
 
     // export the cgraph and exit
     if (params.export_cgraph) {
-        falcon_eval_export(ctx, "llama.ggml");
+        falcon_eval_export(ctx, "falcon.ggml");
         llama_free(ctx);
 
         return 0;

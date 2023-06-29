@@ -2157,8 +2157,13 @@ struct falcon_tokenizer {
             if (token == vocab_.token_to_id.end()) {
                 // output any symbols that did not form tokens as (token) bytes.
                 for (int j = 0; j < (int) symbol.n; ++j) {
-                    falcon_vocab::id token_id = static_cast<uint8_t>(symbol.text[j]) + 3;
-                    output.push_back(token_id);
+                    // falcon_vocab::id token_id = static_cast<uint8_t>(symbol.text[j]) + 3; // not BPE compatible
+                    std::string byte_str(1, symbol.text[j]);
+                    auto token_multibyte = vocab_.token_to_id.find(byte_str);
+                    if (token_multibyte == vocab_.token_to_id.end()) {
+                        fprintf(stderr,"ERROR: byte not found in vocab: '%s'\n", byte_str.c_str());
+                    }
+                    output.push_back((*token_multibyte).second);
                 }
             } else {
                 output.push_back((*token).second);
