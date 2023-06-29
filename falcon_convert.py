@@ -41,7 +41,7 @@ def bytes_to_unicode():
     cs = [chr(n) for n in cs]
     return dict(zip(bs, cs))
 
-if len(sys.argv) < 4:
+if len(sys.argv) < 3:
     print("INFO: GGML V1 files produced are meant to be finalized through examples/falcon_quantize which will bring them to latest version and precision of choice");
     print("Usage: python falcon_convert.py model_directory output_directory [use-f32]")
     # print("  num_parts: number of pytorch parts, use 0 if not a multipart model. example: 9")
@@ -95,12 +95,24 @@ fout.write(struct.pack("i", hparams["n_layer"]))
 fout.write(struct.pack("i", 40 if "n_head_kv" in hparams else 7)) # obsolete field that breaks ggml compatibility - todo again remove one day
 fout.write(struct.pack("i", ftype))
 
+print(f'Vocab size: {hparams["vocab_size"]}')
+print(f'Hidden size: {hparams["hidden_size"]}')
+print(f'Number of heads: {n_head}')
+print(f'Number of layers: {hparams["n_layer"]}')
+print(f'Number of head_kv: {n_head_kv}')
+print(f'Number of head_dim: {head_dim}')
+
 reverse_vocab = {id: encoded_tok for encoded_tok, id in tokenizer.vocab.items()}
 byte_encoder = bytes_to_unicode()
 byte_decoder = {v:k for k, v in byte_encoder.items()}
 
 for i in range(hparams["vocab_size"]):
-    text = bytearray([byte_decoder[c] for c in reverse_vocab[i]])
+    if i in reverse_vocab:
+        text = bytearray([byte_decoder[c] for c in reverse_vocab[i]])
+    else:
+        print(f"Key {i} not in tokenizer vocabulary. Padding with an arbitrary token.")
+        padding_token = f"[PAD{i}]".encode("utf8")
+        text = bytearray(padding_token)
     fout.write(struct.pack("i", len(text)))
     fout.write(text)
     fout.write(struct.pack("f", 0.0)) # falcon uses bpe on RefinedWeb - no probability scores used
