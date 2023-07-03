@@ -2058,8 +2058,8 @@ static bool falcon_eval_internal(
             ggml_set_name(Vcur, "Vcur");
 
             // using mode = 2 for neox mode
-            Qcur = ggml_rope_inplace(ctx0, Qcur, n_past, head_dim, 2);
-            Kcur = ggml_rope_inplace(ctx0, Kcur, n_past, head_dim, 2);
+            Qcur = ggml_rope_inplace(ctx0, Qcur, n_past, head_dim, 2,n_ctx);
+            Kcur = ggml_rope_inplace(ctx0, Kcur, n_past, head_dim, 2,n_ctx);
 
             // store key and value to memory
             {

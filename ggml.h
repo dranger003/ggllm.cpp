@@ -486,6 +486,9 @@ extern "C" {
 
 
     // compute types
+
+    // NOTE: the INIT or FINALIZE pass is not scheduled unless explicitly enabled.
+    // This behavior was changed since https://github.com/ggerganov/llama.cpp/pull/1995.
     enum ggml_task_type {
         GGML_TASK_INIT = 0,
         GGML_TASK_COMPUTE,
@@ -506,7 +509,6 @@ extern "C" {
         atomic_int * aic;
     };
 
-
     // misc
 
     GGML_API void    ggml_time_init(void); // call this once at the beginning of the program
@@ -514,6 +516,9 @@ extern "C" {
     GGML_API int64_t ggml_time_us(void);
     GGML_API int64_t ggml_cycles(void);
     GGML_API int64_t ggml_cycles_per_ms(void);
+
+    GGML_API void    ggml_numa_init(void); // call once for better performance on NUMA systems
+    GGML_API bool    ggml_is_numa(void); // true if init detected that system has >1 NUMA node
 
     GGML_API void    ggml_print_object (const struct ggml_object * obj);
     GGML_API void    ggml_print_objects(const struct ggml_context * ctx);
@@ -1092,13 +1097,15 @@ extern "C" {
     // rotary position embedding
     // if mode & 1 == 1, skip n_past elements
     // if mode & 2 == 1, GPT-NeoX style
+    // if mode & 4 == 1, ChatGLM style
     // TODO: avoid creating a new tensor every time
     GGML_API struct ggml_tensor * ggml_rope(
             struct ggml_context * ctx,
             struct ggml_tensor  * a,
             int                   n_past,
             int                   n_dims,
-            int                   mode);
+            int                   mode,
+            int                   n_ctx);
 
     // in-place, returns view(a)
     GGML_API struct ggml_tensor * ggml_rope_inplace(
@@ -1106,7 +1113,8 @@ extern "C" {
             struct ggml_tensor  * a,
             int                   n_past,
             int                   n_dims,
-            int                   mode);
+            int                   mode,
+            int                   n_ctx);
 
     // rotary position embedding backward, i.e compute dx from dy
     // a - dy
