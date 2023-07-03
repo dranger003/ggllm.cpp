@@ -223,7 +223,12 @@ int main(int argc, char ** argv) {
 
     if (params.interactive_first || params.instruct || !params.prompt.empty() || session_tokens.empty()) {
         // Falcon does not have a dedicated bos token (bos==eos), so don't inject it here
+        // auto start = ggml_time_us();
         embd_inp = ::falcon_tokenize(ctx, params.prompt, false);
+        // auto end = ggml_time_us();
+        // fprintf(stderr, "%s: tokenization took %0.3f ms\n", __func__, (end - start) / 1000.0);
+        // fprintf(stderr, "%s: tokens processed: %d\n", __func__, (int) embd_inp.size());
+        // fprintf(stderr, "%s: tokens/second : %0.3f\n", __func__, (embd_inp.size() / ((end - start) / 1000000.0)));
     } else {
         embd_inp = session_tokens;
     }

@@ -295,7 +295,7 @@ struct falcon_vocab {
     // std::unordered_map<std::pair<std::string, std::string>, int> bpe_ranks;
     std::map<std::pair<std::string,std::string>, int> bpe_ranks;
     std::vector<std::pair<std::string, std::string>> bpe_merges;
-    std::unordered_map<std::string, int> special_tokens;
+    std::map<std::string, int> special_tokens;
 
 
     struct token_score {
@@ -2401,8 +2401,10 @@ struct falcon_tokenizer {
 
     void tokenize(const std::string & text, std::vector<falcon_vocab::id> & output) {
         int final_prev_index = -1;
-        
+        // auto start = ggml_time_us();
         auto word_collection = bpe_gpt2_preprocess(text); 
+        // auto end = ggml_time_us();
+        // fprintf(stderr, "%s: preprocessing took %0.3f ms\n", __func__, (end - start) / 1000.0);
         
         
         symbols_final.clear(); 
@@ -2559,7 +2561,15 @@ private:
         static std::unordered_map<std::string, unsigned char> hex_map = { { "\x21", 0x21 }, { "\x22", 0x22 }, { "\x23", 0x23 }, { "\x24", 0x24 }, { "\x25", 0x25 }, { "\x26", 0x26 }, { "\x27", 0x27 }, { "\x28", 0x28 }, { "\x29", 0x29 }, { "\x2A", 0x2A }, { "\x2B", 0x2B }, { "\x2C", 0x2C }, { "\x2D", 0x2D }, { "\x2E", 0x2E }, { "\x2F", 0x2F }, { "\x30", 0x30 }, { "\x31", 0x31 }, { "\x32", 0x32 }, { "\x33", 0x33 }, { "\x34", 0x34 }, { "\x35", 0x35 }, { "\x36", 0x36 }, { "\x37", 0x37 }, { "\x38", 0x38 }, { "\x39", 0x39 }, { "\x3A", 0x3A }, { "\x3B", 0x3B }, { "\x3C", 0x3C }, { "\x3D", 0x3D }, { "\x3E", 0x3E }, { "\x3F", 0x3F }, { "\x40", 0x40 }, { "\x41", 0x41 }, { "\x42", 0x42 }, { "\x43", 0x43 }, { "\x44", 0x44 }, { "\x45", 0x45 }, { "\x46", 0x46 }, { "\x47", 0x47 }, { "\x48", 0x48 }, { "\x49", 0x49 }, { "\x4A", 0x4A }, { "\x4B", 0x4B }, { "\x4C", 0x4C }, { "\x4D", 0x4D }, { "\x4E", 0x4E }, { "\x4F", 0x4F }, { "\x50", 0x50 }, { "\x51", 0x51 }, { "\x52", 0x52 }, { "\x53", 0x53 }, { "\x54", 0x54 }, { "\x55", 0x55 }, { "\x56", 0x56 }, { "\x57", 0x57 }, { "\x58", 0x58 }, { "\x59", 0x59 }, { "\x5A", 0x5A }, { "\x5B", 0x5B }, { "\x5C", 0x5C }, { "\x5D", 0x5D }, { "\x5E", 0x5E }, { "\x5F", 0x5F }, { "\x60", 0x60 }, { "\x61", 0x61 }, { "\x62", 0x62 }, { "\x63", 0x63 }, { "\x64", 0x64 }, { "\x65", 0x65 }, { "\x66", 0x66 }, { "\x67", 0x67 }, { "\x68", 0x68 }, { "\x69", 0x69 }, { "\x6A", 0x6A }, { "\x6B", 0x6B }, { "\x6C", 0x6C }, { "\x6D", 0x6D }, { "\x6E", 0x6E }, { "\x6F", 0x6F }, { "\x70", 0x70 }, { "\x71", 0x71 }, { "\x72", 0x72 }, { "\x73", 0x73 }, { "\x74", 0x74 }, { "\x75", 0x75 }, { "\x76", 0x76 }, { "\x77", 0x77 }, { "\x78", 0x78 }, { "\x79", 0x79 }, { "\x7A", 0x7A }, { "\x7B", 0x7B }, { "\x7C", 0x7C }, { "\x7D", 0x7D }, { "\x7E", 0x7E }, { "\xC2\xA1", 0xA1 }, { "\xC2\xA2", 0xA2 }, { "\xC2\xA3", 0xA3 }, { "\xC2\xA4", 0xA4 }, { "\xC2\xA5", 0xA5 }, { "\xC2\xA6", 0xA6 }, { "\xC2\xA7", 0xA7 }, { "\xC2\xA8", 0xA8 }, { "\xC2\xA9", 0xA9 }, { "\xC2\xAA", 0xAA }, { "\xC2\xAB", 0xAB }, { "\xC2\xAC", 0xAC }, { "\xC2\xAE", 0xAE }, { "\xC2\xAF", 0xAF }, { "\xC2\xB0", 0xB0 }, { "\xC2\xB1", 0xB1 }, { "\xC2\xB2", 0xB2 }, { "\xC2\xB3", 0xB3 }, { "\xC2\xB4", 0xB4 }, { "\xC2\xB5", 0xB5 }, { "\xC2\xB6", 0xB6 }, { "\xC2\xB7", 0xB7 }, { "\xC2\xB8", 0xB8 }, { "\xC2\xB9", 0xB9 }, { "\xC2\xBA", 0xBA }, { "\xC2\xBB", 0xBB }, { "\xC2\xBC", 0xBC }, { "\xC2\xBD", 0xBD }, { "\xC2\xBE", 0xBE }, { "\xC2\xBF", 0xBF }, { "\xC3\x80", 0xC0 }, { "\xC3\x81", 0xC1 }, { "\xC3\x82", 0xC2 }, { "\xC3\x83", 0xC3 }, { "\xC3\x84", 0xC4 }, { "\xC3\x85", 0xC5 }, { "\xC3\x86", 0xC6 }, { "\xC3\x87", 0xC7 }, { "\xC3\x88", 0xC8 }, { "\xC3\x89", 0xC9 }, { "\xC3\x8A", 0xCA }, { "\xC3\x8B", 0xCB }, { "\xC3\x8C", 0xCC }, { "\xC3\x8D", 0xCD }, { "\xC3\x8E", 0xCE }, { "\xC3\x8F", 0xCF }, { "\xC3\x90", 0xD0 }, { "\xC3\x91", 0xD1 }, { "\xC3\x92", 0xD2 }, { "\xC3\x93", 0xD3 }, { "\xC3\x94", 0xD4 }, { "\xC3\x95", 0xD5 }, { "\xC3\x96", 0xD6 }, { "\xC3\x97", 0xD7 }, { "\xC3\x98", 0xD8 }, { "\xC3\x99", 0xD9 }, { "\xC3\x9A", 0xDA }, { "\xC3\x9B", 0xDB }, { "\xC3\x9C", 0xDC }, { "\xC3\x9D", 0xDD }, { "\xC3\x9E", 0xDE }, { "\xC3\x9F", 0xDF }, { "\xC3\xA0", 0xE0 }, { "\xC3\xA1", 0xE1 }, { "\xC3\xA2", 0xE2 }, { "\xC3\xA3", 0xE3 }, { "\xC3\xA4", 0xE4 }, { "\xC3\xA5", 0xE5 }, { "\xC3\xA6", 0xE6 }, { "\xC3\xA7", 0xE7 }, { "\xC3\xA8", 0xE8 }, { "\xC3\xA9", 0xE9 }, { "\xC3\xAA", 0xEA }, { "\xC3\xAB", 0xEB }, { "\xC3\xAC", 0xEC }, { "\xC3\xAD", 0xED }, { "\xC3\xAE", 0xEE }, { "\xC3\xAF", 0xEF }, { "\xC3\xB0", 0xF0 }, { "\xC3\xB1", 0xF1 }, { "\xC3\xB2", 0xF2 }, { "\xC3\xB3", 0xF3 }, { "\xC3\xB4", 0xF4 }, { "\xC3\xB5", 0xF5 }, { "\xC3\xB6", 0xF6 }, { "\xC3\xB7", 0xF7 }, { "\xC3\xB8", 0xF8 }, { "\xC3\xB9", 0xF9 }, { "\xC3\xBA", 0xFA }, { "\xC3\xBB", 0xFB }, { "\xC3\xBC", 0xFC }, { "\xC3\xBD", 0xFD }, { "\xC3\xBE", 0xFE }, { "\xC3\xBF", 0xFF }, { "\xC4\x80", 0x00 }, { "\xC4\x81", 0x01 }, { "\xC4\x82", 0x02 }, { "\xC4\x83", 0x03 }, { "\xC4\x84", 0x04 }, { "\xC4\x85", 0x05 }, { "\xC4\x86", 0x06 }, { "\xC4\x87", 0x07 }, { "\xC4\x88", 0x08 }, { "\xC4\x89", 0x09 }, { "\xC4\x8A", 0x0A }, { "\xC4\x8B", 0x0B }, { "\xC4\x8C", 0x0C }, { "\xC4\x8D", 0x0D }, { "\xC4\x8E", 0x0E }, { "\xC4\x8F", 0x0F }, { "\xC4\x90", 0x10 }, { "\xC4\x91", 0x11 }, { "\xC4\x92", 0x12 }, { "\xC4\x93", 0x13 }, { "\xC4\x94", 0x14 }, { "\xC4\x95", 0x15 }, { "\xC4\x96", 0x16 }, { "\xC4\x97", 0x17 }, { "\xC4\x98", 0x18 }, { "\xC4\x99", 0x19 }, { "\xC4\x9A", 0x1A }, { "\xC4\x9B", 0x1B }, { "\xC4\x9C", 0x1C }, { "\xC4\x9D", 0x1D }, { "\xC4\x9E", 0x1E }, { "\xC4\x9F", 0x1F }, { "\xC4\xA0", 0x20 }, { "\xC4\xA1", 0x7F }, { "\xC4\xA2", 0x80 }, { "\xC4\xA3", 0x81 }, { "\xC4\xA4", 0x82 }, { "\xC4\xA5", 0x83 }, { "\xC4\xA6", 0x84 }, { "\xC4\xA7", 0x85 }, { "\xC4\xA8", 0x86 }, { "\xC4\xA9", 0x87 }, { "\xC4\xAA", 0x88 }, { "\xC4\xAB", 0x89 }, { "\xC4\xAC", 0x8A }, { "\xC4\xAD", 0x8B }, { "\xC4\xAE", 0x8C }, { "\xC4\xAF", 0x8D }, { "\xC4\xB0", 0x8E }, { "\xC4\xB1", 0x8F }, { "\xC4\xB2", 0x90 }, { "\xC4\xB3", 0x91 }, { "\xC4\xB4", 0x92 }, { "\xC4\xB5", 0x93 }, { "\xC4\xB6", 0x94 }, { "\xC4\xB7", 0x95 }, { "\xC4\xB8", 0x96 }, { "\xC4\xB9", 0x97 }, { "\xC4\xBA", 0x98 }, { "\xC4\xBB", 0x99 }, { "\xC4\xBC", 0x9A }, { "\xC4\xBD", 0x9B }, { "\xC4\xBE", 0x9C }, { "\xC4\xBF", 0x9D }, { "\xC5\x80", 0x9E }, { "\xC5\x81", 0x9F }, { "\xC5\x82", 0xA0 }, { "\xC5\x83", 0xAD }};
         return hex_map;
     }
-
+    // len must be available
+    bool inline str_is_equal(const char* str1, const char* str2, size_t len) {
+        for (size_t i = 0; i < len; ++i) {
+            if (str1[i] != str2[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
     std::vector<std::string> bpe_gpt2_preprocess(const std::string& text) 
     {
         static std::unordered_map< unsigned char, std::string> byte_encoder = bytes_to_unicode();
@@ -2576,16 +2586,24 @@ private:
         bool collecting_whitespace_lookahead = false;
         bool collecting=false;
 
-        std::vector<CNCTString> text_utf = CNCTUnicode::split_utf8_enhanced(text);
-        std::unordered_map<std::string, int> special_tokens = vocab_.special_tokens;
-        size_t smallest_len_special_tokens = 1024;
-        for (auto it = special_tokens.begin(); it != special_tokens.end(); ++it)
-        {
-            std::string special_token = it->first;
-            if (special_token.size() < smallest_len_special_tokens)
-                smallest_len_special_tokens = special_token.size();
-        }
+        std::vector<CNCTString> text_utf;
+        text_utf.reserve(text.size());
+        bpe_words.reserve(text.size());
+        bpe_encoded_words.reserve(text.size());
 
+        text_utf = CNCTUnicode::split_utf8_enhanced(text);
+        std::map<std::string, int> special_tokens = vocab_.special_tokens;
+        int smallest_len_special_tokens = 0;
+        if (special_tokens.size())
+        {
+            smallest_len_special_tokens = special_tokens.begin()->first.size();
+            for (auto it = special_tokens.begin(); it != special_tokens.end(); ++it)
+            {
+                if (it->first.size() < smallest_len_special_tokens)
+                    smallest_len_special_tokens = it->first.size();
+            }
+        }
+        
         for (int i = 0; i < (int)text_utf.size(); i++) 
         {
             const CNCTString &utf_char = text_utf[i];
@@ -2593,38 +2611,44 @@ private:
             const char *text_pos = raw_text_p + utf_char.seq_offset_bytes;
             int bytes_remain = strlen(text_pos);
             // forward backward lookups
-            CNCTString utf_char_next = (i+1 < (int)text_utf.size()) ? text_utf[i+1] : CNCTString();
-            CNCTString utf_char_next_next = (i+2 < (int)text_utf.size()) ? text_utf[i+2] : CNCTString();
-            CNCTString utf_char_prev = (i > 0) ? text_utf[i-1] : CNCTString();
-
-            // handling special tokens
+            const CNCTString &utf_char_next = (i+1 < (int)text_utf.size()) ? text_utf[i+1] : CNCTString();
+            const CNCTString &utf_char_next_next = (i+2 < (int)text_utf.size()) ? text_utf[i+2] : CNCTString();
+            // const CNCTString &utf_char_prev = (i > 0) ? text_utf[i-1] : CNCTString();
+        
+        // handling special tokens
             bool special_token_found = false;
             if (bytes_remain >= (int)smallest_len_special_tokens)
             for (auto it = special_tokens.begin(); it != special_tokens.end(); ++it)
             {
-                std::string special_token = it->first;
-                if ((bytes_remain) < (int)special_token.size())
+                if ((bytes_remain) < (int)it->first.size())
                     continue;
-                if (strncmp(text_pos, special_token.c_str(), special_token.size()) == 0)
+
+                if (str_is_equal(text_pos, it->first.c_str(), it->first.size()))
                 {
                     if (token.size())
                     {
-                        bpe_words.push_back(token); // push previous content as token
-                        token = "";
+                        bpe_words.emplace_back(token); // push previous content as token
+                        token.clear();
+                        collecting = false;
+                        collecting_letter = false;
+                        collecting_numeric = false;
+                        collecting_special = false;
+                        collecting_whitespace_lookahead = false;
                     }
-                    bpe_words.push_back(special_token); // push special token as token
+
+                    bpe_words.emplace_back(it->first); // push special token as token
+                    
                     // we now advance i until the token is fulfilled by the utf_chars
-                    int st_bytes = (int)special_token.size();
+                    int st_bytes = (int)it->first.size();
                     for (;st_bytes;st_bytes -= text_utf[i++].str.size());
                     i--;
                     special_token_found = true;
                     break;
                 }
             }
+            
             if (special_token_found)   continue;
 
-
-        
 
             // handling contractions
             if (!split_condition && bytes_remain >= 2)
@@ -2635,9 +2659,9 @@ private:
                 if (split_condition)
                 {
                     if (token.size())
-                        bpe_words.push_back(token); // push previous content as token
+                        bpe_words.emplace_back(token); // push previous content as token
                     token = utf_char.str + utf_char_next.str; 
-                    bpe_words.push_back(token); 
+                    bpe_words.emplace_back(token); 
                     token="";
                     i++;
                     continue;
@@ -2656,9 +2680,9 @@ private:
                 {
                     // current token + next token can be defined
                     if (token.size())
-                        bpe_words.push_back(token); // push previous content as token
+                        bpe_words.emplace_back(token); // push previous content as token
                     token = utf_char.str + utf_char_next.str + utf_char_next_next.str; 
-                    bpe_words.push_back(token); // the contraction
+                    bpe_words.emplace_back(token); // the contraction
                     token="";
                     i+=2;
                     continue;
@@ -2722,7 +2746,7 @@ private:
             if (split_condition)
             {
                 if (token.size())
-                    bpe_words.push_back(token);
+                    bpe_words.emplace_back(token);
                 token = utf_char.str;
                 collecting = false;
                 collecting_letter = false;
@@ -2739,7 +2763,7 @@ private:
             {
                 encoded_token += byte_encoder[c];
             }
-            bpe_encoded_words.push_back(encoded_token);
+            bpe_encoded_words.emplace_back(encoded_token);
         }
 
         return bpe_encoded_words;
