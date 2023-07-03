@@ -2599,7 +2599,7 @@ private:
             smallest_len_special_tokens = special_tokens.begin()->first.size();
             for (auto it = special_tokens.begin(); it != special_tokens.end(); ++it)
             {
-                if (it->first.size() < smallest_len_special_tokens)
+                if (it->first.size() < (size_t)smallest_len_special_tokens)
                     smallest_len_special_tokens = it->first.size();
             }
         }

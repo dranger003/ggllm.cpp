@@ -719,7 +719,7 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+\
             } else {
                 // fprintf(stderr, " [end of text]\n");
                 // if we are in the prompt ingestion we will not stop
-                if (n_past > embd_inp.size()) {
+                if (n_past > (int)embd_inp.size()) {
                     break;
                 }
             }
