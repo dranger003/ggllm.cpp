@@ -139,7 +139,7 @@ int main(int argc, char ** argv) {
         params.prompt = gpt_random_prompt(rng);
     }
 
-    llama_init_backend();
+    falcon_init_backend();
 
     falcon_context * ctx;
     g_ctx = &ctx;
@@ -288,7 +288,8 @@ int main(int argc, char ** argv) {
     }
 
     // determine newline token
-    auto llama_token_newline = ::falcon_tokenize(ctx, "\n", false);
+    //auto llama_token_newline = ::falcon_tokenize(ctx, "\n", false);
+    auto llama_token_newline = std::vector<llama_token>(193);
 
     if (params.verbose_prompt) {
         fprintf(stderr, "\n");
@@ -711,8 +712,11 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+\
             if (params.instruct) {
                 is_interacting = true;
             } else {
-                fprintf(stderr, " [end of text]\n");
-                break;
+                // fprintf(stderr, " [end of text]\n");
+                // if we are in the prompt ingestion we will not stop
+                if (n_past > embd_inp.size()) {
+                    break;
+                }
             }
         }
 
