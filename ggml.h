@@ -504,9 +504,6 @@ extern "C" {
         // work buffer for all threads
         size_t wsize;
         void * wdata;
-
-        // atomic counter used to distribute chunks of work
-        atomic_int * aic;
     };
 
     // misc
