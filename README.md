@@ -6,12 +6,17 @@ ggllm.cpp is a llama.cpp modification to run Falcon (work in progress)
 - Higher efficiency in VRAM usage when using batched processing (more layers being offloaded)
 - 16 bit cuBLAs support (takes half the VRAM for those operations)
 - Improved loading screen and visualization
+- New tokenizer with regex emulation and BPE merge support
 - More command line parameter options (like disabling GPUs)
 - Current Falcon inference speed on consumer GPU: up to 51 tokens/sec for 7B-4bit and 17 tokens/sec for 40B-6bit, roughly 38/sec and 16/sec at at 1000 tokens generated
   
 **What is missing/being worked on:**
 - Full GPU offloading of Falcon
-- better quantization options for Falcon
+- Optimized quantization versions for Falcon
+
+**Old model support**
+If you use GGML type models (file versions 1-4) you need to place tokenizer.json into the model directory ! (example: https://huggingface.co/OpenAssistant/falcon-40b-sft-mix-1226/blob/main/tokenizer.json)
+If you use updated model binaries they are file version 10+ and called "GGCC", those do not need the load and convert that json file
 
 **The Bloke features fine tuned weights in ggml v3 with various quantization options:**  
 https://huggingface.co/TheBloke/falcon-40b-instruct-GGML  
@@ -29,8 +34,10 @@ https://huggingface.co/tiiuae/falcon-7b-instruct
 https://huggingface.co/OpenAssistant
 _Download the 7B or 40B Falcon version, use falcon_convert.py (latest version) in 32 bit mode, then falcon_quantize to convert it to ggml-v3_
 
+**Prompting finetuned models right:**
+https://github.com/cmp-nct/ggllm.cpp/discussions/36
 
-**Conversion:**
+**Conversion of HF models and quantization:**
 1) use falcon_convert.py to produce a GGML v1 binary from HF - not recommended to be used directly
 2) use examples/falcon_quantize to convert these into memory aligned GGMLv3 binaries of your choice including mmap support from there on  
 _The Falcon 7B model features tensor sizes which are not yet supported by K-type quantizers - use the traditional quantization for those_  
