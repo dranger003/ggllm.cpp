@@ -1,0 +1,33 @@
+{
+  "_name_or_path": "./falcon40b-mini-shakespeare",
+  "alibi": false,
+  "apply_residual_connection_post_layernorm": false,
+  "architectures": [
+    "RWForCausalLM"
+  ],
+  "attention_dropout": 0.0,
+  "auto_map": {
+    "AutoConfig": "configuration_RW.RWConfig",
+    "AutoModel": "modelling_RW.RWModel",
+    "AutoModelForCausalLM": "modelling_RW.RWForCausalLM",
+    "AutoModelForQuestionAnswering": "modelling_RW.RWForQuestionAnswering",
+    "AutoModelForSequenceClassification": "modelling_RW.RWForSequenceClassification",
+    "AutoModelForTokenClassification": "modelling_RW.RWForTokenClassification"
+  },
+  "bias": false,
+  "bos_token_id": 11,
+  "eos_token_id": 11,
+  "hidden_dropout": 0.0,
+  "hidden_size": 256,
+  "initializer_range": 0.02,
+  "layer_norm_epsilon": 1e-05,
+  "model_type": "RefinedWeb",
+  "n_head": 4,
+  "n_head_kv": 2,
+  "n_layer": 4,
+  "parallel_attn": true,
+  "torch_dtype": "float32",
+  "transformers_version": "4.28.0",
+  "use_cache": true,
+  "vocab_size": 65024
+}
