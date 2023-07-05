@@ -6,8 +6,8 @@ root = true
 # Unix-style newlines with a newline ending every file, utf-8 charset
 [*]
 end_of_line = lf
-insert_final_newline = true
-trim_trailing_whitespace = true
+insert_final_newline = false
+trim_trailing_whitespace = false
 charset = utf-8
 indent_style = space
 indent_size = 4
@@ -17,3 +17,17 @@ indent_style = tab
 
 [prompts/*.txt]
 insert_final_newline = unset
+
+[models/*]
+insert_final_newline = false
+trim_trailing_whitespace = false
+charset = unset
+indent_size = unset
+indent_style = unset
+
+[models/**/*]
+insert_final_newline = false
+trim_trailing_whitespace = false
+charset = unset
+indent_size = unset
+indent_style = unset
