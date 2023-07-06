@@ -1,4 +1,4 @@
-ggllm.cpp is a llama.cpp modification to run Falcon (work in progress)
+ggllm.cpp is a ggml-based tool to run quantized Falcon Models on CPU and GPU
 
 **Features that differentiate from llama.cpp for now:**
 - Support for Falcon 7B and 40B models (inference, quantization and perplexity tool)
