@@ -21,6 +21,7 @@
 //
 int32_t get_num_physical_cores();
 
+
 struct gpt_params {
     int32_t seed                           = -1;   // RNG seed
     int32_t n_threads                      = 1;
@@ -52,7 +53,9 @@ struct gpt_params {
 
     std::string model             = "models/7B/ggml-model.bin"; // model path
     std::string model_alias       = "unknown"; // model alias
+    t_finetune_type finetune_type = FINETUNE_UNSPECIFIED; // finetune type
     std::string prompt            = "";
+    std::string system_prompt     = ""; // optional system prompt for complex finetunes
     std::string path_prompt_cache = "";  // path to file for saving/loading prompt eval state
     std::string input_prefix      = "";  // string to prefix user inputs with
     std::string input_suffix      = "";  // string to suffix user inputs with
@@ -61,6 +64,8 @@ struct gpt_params {
     std::string lora_adapter = "";  // lora adapter path
     std::string lora_base    = "";  // base model path for the lora adapter
 
+    std::string stopwords  = ""; // comma separated list of stopwords (<|endoftext|> is handled by --ignore-eos)
+    bool enclose_finetune  = false; // enclose prompt with correct tokens for finetuned model
     bool memory_f16        = true;  // use f16 instead of f32 for memory kv
     bool random_prompt     = false; // do not randomize prompt if none provided
     bool use_color         = false; // use color to distinguish generations and inputs

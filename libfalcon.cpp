@@ -1,8 +1,8 @@
 /*
-    * libfalcon.cpp
-    * https://github.com/cmp-nct/ggllm.cpp
-    * MIT license
-*/
+ * libfalcon.cpp - core functions for inference and loading of ggcc type falcon 7B and 40B models
+ * https://github.com/cmp-nct/ggllm.cpp
+ * MIT licensed, contributions welcome
+ */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #include <cstddef>
@@ -1456,6 +1456,27 @@ static const char *falcon_model_type_name(e_model type) {
         case FALCON_40B: return "40B";
         default: LLAMA_ASSERT(false);
     }
+}
+
+// todo: possibly add that information into ggcc v2 
+t_finetune_type falcon_detect_finetune(falcon_context * ctx, std::string model_path) 
+{
+    std::string model_lower = model_path;
+    std::transform(model_lower.begin(), model_lower.end(), model_lower.begin(), ::tolower);
+
+    for (auto const& x : ctx->vocab.special_tokens) {
+        if (x.first == "<|prompter|>") {
+            return FINETUNE_OPENASSISTANT;
+        }
+    }
+    if (model_lower.find("wizard") != std::string::npos) {
+        return FINETUNE_WIZARD;
+    }
+    if (model_lower.find("b-instruct") != std::string::npos) {
+        return FINETUNE_FALCONINSTRUCT;
+    }
+    return FINETUNE_UNSPECIFIED;
+
 }
 
 // dynamically gets all tensors from a layer

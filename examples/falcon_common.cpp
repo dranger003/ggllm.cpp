@@ -278,13 +278,44 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
                 break;
             }
             params.model = argv[i];
-        } else if (arg == "-a" || arg == "--alias") {
+        } else if (arg == "-a" || arg == "--alias" || arg == "--finetune" ) {
             if (++i >= argc) {
                 invalid_param = true;
                 break;
             }
             params.model_alias = argv[i];
-        } else if (arg == "--lora") {
+            // force a finetune type based on alias
+            if (params.model_alias == "wizard") {
+                params.finetune_type == FINETUNE_WIZARD;
+            } else
+            if (params.model_alias == "falcon-ins") {
+                params.finetune_type == FINETUNE_FALCONINSTRUCT;
+            } else
+            if (params.model_alias == "open-assistant") {
+                params.finetune_type == FINETUNE_OPENASSISTANT;
+            } else
+            if (params.model_alias == "alpaca") {
+                params.finetune_type == FINETUNE_ALPACA;
+            } else
+            if (params.model_alias == "none") {
+                params.finetune_type == FINETUNE_NONE;
+            } 
+        }  else if (arg == "-S" || arg == "--stopwords") {
+            if (++i >= argc) {
+                invalid_param = true;
+                break;
+            }
+            params.stopwords = argv[i];
+        } else if (arg == "-enc" || arg == "-enclose") {
+            params.enclose_finetune = true;
+        }  else if (arg == "-sys" || arg == "--system") {
+            if (++i >= argc) {
+                invalid_param = true;
+                break;
+            }
+            params.system_prompt = argv[i];
+        }
+        else if (arg == "--lora") {
             if (++i >= argc) {
                 invalid_param = true;
                 break;
@@ -419,7 +450,7 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
         } else if (arg == "--perplexity") {
             params.perplexity = true;
         } else if (arg == "--ignore-eos") {
-            params.logit_bias[falcon_token_eos()] = -INFINITY;
+            params.logit_bias[falcon_token_eos()] = -INFINITY; // todo: make it a proper stopword removal bool
         } else if (arg == "--no-penalize-nl") {
             params.penalize_nl = false;
         } else if (arg == "-l" || arg == "--logit-bias") {
@@ -507,6 +538,12 @@ void gpt_print_usage(int /*argc*/, char ** argv, const gpt_params & params) {
     fprintf(stderr, "  -i, --interactive     run in interactive mode\n");
     fprintf(stderr, "  --interactive-first   run in interactive mode and wait for input right away\n");
     fprintf(stderr, "  -ins, --instruct      run in instruction mode (use with Alpaca models)\n");
+    fprintf(stderr, "  -a,--alias,--finetune Set model name alias and optionally force fine-tune type (or disable it)\n");
+    fprintf(stderr, "                        Finetune options: wizard, falcon-ins, open-assistant, alpaca, none\n");
+    fprintf(stderr, "                        Use if finetune autodetection does not or wrongly recognizes your model or filename\n");
+    fprintf(stderr, "  -sys, --system        prefix the entire prompt with the system prompt text\n");
+    fprintf(stderr, "  -enc, --enclose       enclose the prompt in fine-tune optimal syntax\n");
+    fprintf(stderr, "                        This automatically chooses the correct syntax to write around your prompt.\n");
     fprintf(stderr, "  --multiline-input     allows you to write or paste multiple lines without ending each in '\\'\n");
     fprintf(stderr, "  -r PROMPT, --reverse-prompt PROMPT\n");
     fprintf(stderr, "                        halt generation at PROMPT, return control in interactive mode\n");
@@ -516,6 +553,9 @@ void gpt_print_usage(int /*argc*/, char ** argv, const gpt_params & params) {
     fprintf(stderr, "  -t N, --threads N     number of threads to use during computation (default: %d)\n", params.n_threads);
     fprintf(stderr, "  -p PROMPT, --prompt PROMPT\n");
     fprintf(stderr, "                        prompt to start generation with (default: empty)\n");
+    fprintf(stderr, "  -S, --stopwords \",,,\" Add stopwords in addition to the usual end-of-sequence\n");
+    fprintf(stderr, "                        comma separated list: -S \"\\n,Hello World,stopword\" - overwrites defaults except eos\n");
+    fprintf(stderr, "                        Important: 'is' and ' is' are unique tokens in a stopword. Just as 'Hello' and ' Hello' are distinct\n");
     fprintf(stderr, "  -e                    process prompt escapes sequences (\\n, \\r, \\t, \\', \\\", \\\\)\n");
     fprintf(stderr, "  --prompt-cache FNAME  file to cache prompt state for faster startup (default: none)\n");
     fprintf(stderr, "  --prompt-cache-all    if specified, saves user input and generations to cache as well.\n");
