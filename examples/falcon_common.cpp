@@ -286,19 +286,19 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
             params.model_alias = argv[i];
             // force a finetune type based on alias
             if (params.model_alias == "wizard") {
-                params.finetune_type == FINETUNE_WIZARD;
+                params.finetune_type = FINETUNE_WIZARD;
             } else
             if (params.model_alias == "falcon-ins") {
-                params.finetune_type == FINETUNE_FALCONINSTRUCT;
+                params.finetune_type = FINETUNE_FALCONINSTRUCT;
             } else
             if (params.model_alias == "open-assistant") {
-                params.finetune_type == FINETUNE_OPENASSISTANT;
+                params.finetune_type = FINETUNE_OPENASSISTANT;
             } else
             if (params.model_alias == "alpaca") {
-                params.finetune_type == FINETUNE_ALPACA;
+                params.finetune_type = FINETUNE_ALPACA;
             } else
             if (params.model_alias == "none") {
-                params.finetune_type == FINETUNE_NONE;
+                params.finetune_type = FINETUNE_NONE;
             } 
         }  else if (arg == "-S" || arg == "--stopwords") {
             if (++i >= argc) {
