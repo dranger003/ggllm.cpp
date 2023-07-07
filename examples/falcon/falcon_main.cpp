@@ -519,7 +519,8 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
 
     
 
-    // do one empty run to warm up the model
+    // do one empty run to warm up the model (doing this with a session would destroy first KV pair)
+    if(n_matching_session_tokens <= 0)
     {
         const std::vector<falcon_token> tmp = { falcon_token_bos(), };
         falcon_eval(ctx, tmp.data(), (int)tmp.size(), 0, params.n_threads,0);
