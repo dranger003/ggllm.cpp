@@ -19705,7 +19705,7 @@ float ggml_get_tensor_index(const struct ggml_tensor* tensor, int ind1, int ind2
     for (int i = 0; i < tensor->n_dims; i++) {
         if (indices[i] > tensor->ne[i] || indices[i] < 0) {
             printf("Error: Incorrect index for dimension %d\n", i);
-            printf("Index: %d, Dimension size: %ld\n", indices[i], tensor->ne[i]);
+            printf("Index: %d, Dimension size: %lld\n", indices[i], tensor->ne[i]);
             return -1; // handle error
         }
 
