@@ -1,4 +1,4 @@
-ggllm.cpp is a llama.cpp modification to run Falcon (work in progress)
+ggllm.cpp is a ggml-based tool to run quantized Falcon Models on CPU and GPU
 
 **Features that differentiate from llama.cpp for now:**
 - Support for Falcon 7B and 40B models (inference, quantization and perplexity tool)
@@ -7,18 +7,30 @@ ggllm.cpp is a llama.cpp modification to run Falcon (work in progress)
 - 16 bit cuBLAs support (takes half the VRAM for those operations)
 - Improved loading screen and visualization
 - New tokenizer with regex emulation and BPE merge support
+- Finetune auto-detection and integrated syntax support (Just load OpenAssistant 7/40 add `-ins` for a chat or `-enc -p "Question"` and optional -sys "System prompt")
+- Stopwords support (-S)
+- Optimized RAM and VRAM calculation with batch processing support up to 8k
 - More command line parameter options (like disabling GPUs)
-- Current Falcon inference speed on consumer GPU: up to 51 tokens/sec for 7B-4bit and 17 tokens/sec for 40B-6bit, roughly 38/sec and 16/sec at at 1000 tokens generated
+- Current Falcon inference speed on consumer GPU: up to 54+ tokens/sec for 7B-4-5bit and 18-25 tokens/sec for 40B 3-6 bit, roughly 38/sec and 16/sec at at 1000 tokens generated
   
 **What is missing/being worked on:**
 - Full GPU offloading of Falcon
 - Optimized quantization versions for Falcon
+- A new instruct mode
+- Large context support (4k-64k in the work)
 
-**Old model support**
-If you use GGML type models (file versions 1-4) you need to place tokenizer.json into the model directory ! (example: https://huggingface.co/OpenAssistant/falcon-40b-sft-mix-1226/blob/main/tokenizer.json)
-If you use updated model binaries they are file version 10+ and called "GGCC", those do not need the load and convert that json file
+**Old model support**  
+If you use GGML type models (file versions 1-4) you need to place tokenizer.json into the model directory ! (example: https://huggingface.co/OpenAssistant/falcon-40b-sft-mix-1226/blob/main/tokenizer.json)  
+If you use updated model binaries they are file version 10+ and called "GGCC", those do not need the load and convert that json file  
 
-**The Bloke features fine tuned weights in ggml v3 with various quantization options:**  
+**How to just run it?**
+1) In most cases you will want to choose a good instruct model, currently the best tunes are from OpenAssist.  
+2) Falcon 40B is great even at Q2_K (2 bit) quantization, very good multilingual and reasoning quality.
+3) After downloading (and/or converting/quantizing) your model you launch falcon_main with `-enc -p "Your question"` or with `-ins` for multiple questions
+4) From there on you can dive into more options, there is a lot to change and optimize.
+
+**The Bloke features fine tuned weights in ggcc v10 with various quantization options:**  
+https://huggingface.co/TheBloke/falcon-40b-sft-mix-1226-GGML (OpenAssistant 40B)
 https://huggingface.co/TheBloke/falcon-40b-instruct-GGML  
 https://huggingface.co/TheBloke/WizardLM-Uncensored-Falcon-40B-GGML  
 https://huggingface.co/TheBloke/falcon-7b-instruct-GGML  
@@ -32,14 +44,16 @@ https://huggingface.co/tiiuae/falcon-7b-instruct
 
 **OpenAssistant here:**
 https://huggingface.co/OpenAssistant
-_Download the 7B or 40B Falcon version, use falcon_convert.py (latest version) in 32 bit mode, then falcon_quantize to convert it to ggml-v3_
+https://huggingface.co/OpenAssistant/falcon-7b-sft-mix-2000
+https://huggingface.co/OpenAssistant/falcon-40b-sft-mix-1226
+_Download the 7B or 40B Falcon version, use falcon_convert.py (latest version) in 32 bit mode, then falcon_quantize to convert it to ggcc-v10_
 
 **Prompting finetuned models right:**
 https://github.com/cmp-nct/ggllm.cpp/discussions/36
 
 **Conversion of HF models and quantization:**
 1) use falcon_convert.py to produce a GGML v1 binary from HF - not recommended to be used directly
-2) use examples/falcon_quantize to convert these into memory aligned GGMLv3 binaries of your choice including mmap support from there on  
+2) use examples/falcon_quantize to convert these into memory aligned GGCC v10 binaries of your choice including mmap support from there on  
 _The Falcon 7B model features tensor sizes which are not yet supported by K-type quantizers - use the traditional quantization for those_  
   
 **Status/Bugs:**  
@@ -109,9 +123,11 @@ export PATH="/usr/local/cuda/bin:$PATH"
 Only some tensors are GPU supported currently and only mul_mat operation supported
 Some of the below examples require two GPUs to run at the given speed, the settings were tailored for one environment and a different GPU/CPU/DDR setup might require adaptions  
 
+Below examples are a bit outdated, models are faster now  
+
 **Falcon 40B 6 bit K-type quantization:**
 ```
-falcon_main.exe -t 2 -m Q:\models\falcon-40b-instruct\q6_k -n 512 -n 32 --debug-timings 0 -b 1 --ignore-eos -p "I am" # -ts 2,1
+falcon_main.exe -m Q:\models\falcon-40b-instruct\q6_k -n 512 -n 32 --debug-timings 0 -b 1 --ignore-eos -p "I am" # -ts 2,1
 ...
 falcon_print_timings:        load time = 11554.93 ms
 falcon_print_timings:      sample time =     7.54 ms /    32 runs   (    0.24 ms per token,  4244.59 tokens per second)
@@ -121,7 +137,7 @@ falcon_print_timings:       total time =  1980.28 ms
 
 **Falcon 40B 4 bit K-type quantization:**
 ```
-falcon_main.exe -t 2 -m Q:\models\falcon-40b\q4_k -n 512 -n 128 --debug-timings 0 -b 1 --ignore-eos -p "I am" # -ts 2,1 # --override-max-gpu 1 --gpu-reserve-mb-main -500
+falcon_main.exe -m Q:\models\falcon-40b\q4_k -n 512 -n 128 --debug-timings 0 -b 1 --ignore-eos -p "I am" # -ts 2,1 # --override-max-gpu 1 --gpu-reserve-mb-main -500
 ...
 falcon_print_timings:        load time =  8749.56 ms
 falcon_print_timings:      sample time =    29.47 ms /   128 runs   (    0.23 ms per token,  4342.81 tokens per second)
@@ -132,7 +148,7 @@ falcon_print_timings:       total time =  7095.81 ms
 
 **Falcon 7B 8 bit quantization:**
 ```
-falcon_main.exe -t 2 -m Q:\models\falcon-7b-instruct\q8_0 -n 512 -n 32 --debug-timings 0 -b 1 --ignore-eos --override-max-gpu 1 -p "I am"
+falcon_main.exe -m Q:\models\falcon-7b-instruct\q8_0 -n 512 -n 32 --debug-timings 0 -b 1 --ignore-eos --override-max-gpu 1 -p "I am"
 ...
 falcon_print_timings:        load time =  2539.21 ms
 falcon_print_timings:      sample time =     7.65 ms /    32 runs   (    0.24 ms per token,  4181.91 tokens per second)
