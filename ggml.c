@@ -10921,7 +10921,7 @@ static void ggml_compute_forward_mul_mat_f32(
     const int64_t ne02 = src0->ne[2];
     const int64_t ne03 = src0->ne[3];
 
-    // const int64_t ne10 = src1->ne[0];
+    const int64_t ne10 = src1->ne[0];
     const int64_t ne11 = src1->ne[1];
     const int64_t ne12 = src1->ne[2];
     const int64_t ne13 = src1->ne[3];
@@ -18284,7 +18284,7 @@ void ggml_graph_print_impl(const struct ggml_cgraph * cgraph, bool print_nodes, 
         }
         else 
         {
-            snprintf(str_device_info, 512, "[CPU]");
+            snprintf(str_device_info, 128, "[CPU]");
         }
         // the printed dimensions are not necessarily correct, needs an improvement
         if (print_nodes)
