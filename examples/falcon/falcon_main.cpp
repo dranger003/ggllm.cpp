@@ -248,7 +248,7 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "%s: error: prompt is too long (%d tokens, max %d)\n", __func__, (int) embd_inp.size(), n_ctx - 4);
         return 1;
     }
-    falcon_prepare_buffers(ctx, params.n_batch, embd_inp.size()+1);
+    falcon_prepare_buffers(ctx, params.n_batch, (int)(embd_inp.size()+1));
     // debug message about similarity of saved session, if applicable
     size_t n_matching_session_tokens = 0;
     if (session_tokens.size()) {
@@ -470,8 +470,8 @@ fprintf(stderr, "+============+=======+=======+=======+=======+=======+=======+-
 fprintf(stderr, "| %10s | %5s | %5s | %5s | %5s | %13s | %20s | %4s |\n", 
                 "Generation", "Ctx", "Batch", "Keep","Prom.","Seed","Finetune", "Stop");
 fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+----------------------+------+\n");  
-fprintf(stderr, "|            | %5d | %5d | %5d | %5zu | %13d | %20s | #%3lld |\n",
-                n_ctx, params.n_batch, params.n_keep, prompt_size,params.seed,FINETUNE_NAME[params.finetune_type], ((params.logit_bias[falcon_token_eos()] == -INFINITY)?0:1)+stopwords.size());
+fprintf(stderr, "|            | %5d | %5d | %5d | %5zu | %13d | %20s | #%3d |\n",
+                n_ctx, params.n_batch, params.n_keep, prompt_size,params.seed,FINETUNE_NAME[params.finetune_type], (int)(((params.logit_bias[falcon_token_eos()] == -INFINITY)?0:1)+stopwords.size()));
 fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+----------------------+------+\n");  
 
     if (n_ctx < (int)(params.n_predict + embd_inp.size())) {
@@ -522,7 +522,7 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
     // do one empty run to warm up the model
     {
         const std::vector<falcon_token> tmp = { falcon_token_bos(), };
-        falcon_eval(ctx, tmp.data(), tmp.size(), 0, params.n_threads,0);
+        falcon_eval(ctx, tmp.data(), (int)tmp.size(), 0, params.n_threads,0);
         llama_reset_timings(ctx);
     }
 
@@ -627,7 +627,7 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
             }
             if (embd.size() > 0 && !path_session.empty()) {
                 session_tokens.insert(session_tokens.end(), embd.begin(), embd.end());
-                n_session_consumed = session_tokens.size();
+                n_session_consumed = (int)session_tokens.size();
             }
         } // if (embd.size() > 0)
 
@@ -888,7 +888,7 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
 
                     // instruct mode: insert instruction prefix
                     if (params.instruct && !is_antiprompt) {
-                        n_consumed = embd_inp.size();
+                        n_consumed = (int)embd_inp.size();
                         embd_inp.insert(embd_inp.end(), inp_pfx.begin(), inp_pfx.end());
                     }
 
@@ -900,7 +900,7 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
                         embd_inp.insert(embd_inp.end(), inp_sfx.begin(), inp_sfx.end());
                     }
 
-                    n_remain -= line_inp.size(); // ugh - don't like ignoring the prompts. needs a audit
+                    n_remain -= (int)line_inp.size(); // ugh - don't like ignoring the prompts. needs a audit
                 }
 
                 // system prompt injection

@@ -251,6 +251,8 @@ extern "C" {
     typedef enum { FINETUNE_UNSPECIFIED, FINETUNE_NONE, FINETUNE_ALPACA, FINETUNE_OPENASSISTANT, FINETUNE_WIZARD, FINETUNE_FALCONINSTRUCT } t_finetune_type;
     static const char *FINETUNE_NAME[6] = { "UNSPECIFIED", "NONE", "ALPACA", "OPENASSISTANT", "WIZARD", "FALCONINSTRUCT" };
 
+    
+
 
     LLAMA_API t_finetune_type falcon_detect_finetune(falcon_context * ctx, std::string model_path);
     // Special tokens

@@ -64,6 +64,7 @@ enum e_model {
     FALCON_7B,
     FALCON_40B,
 };
+static const char *unused0 = FINETUNE_NAME[0]; 
 
 static const size_t MB = 1024*1024;
 
