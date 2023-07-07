@@ -200,102 +200,13 @@ int main(int argc, char ** argv) {
         return 0;
     }
 
-    std::string path_session = params.path_prompt_cache;
-    std::vector<falcon_token> session_tokens;
-
-    if (!path_session.empty()) {
-        fprintf(stderr, "%s: attempting to load saved session from '%s'\n", __func__, path_session.c_str());
-
-        // fopen to check for existing session
-        FILE * fp = std::fopen(path_session.c_str(), "rb");
-        if (fp != NULL) {
-            std::fclose(fp);
-
-            session_tokens.resize(params.n_ctx);
-            size_t n_token_count_out = 0;
-            if (!llama_load_session_file(ctx, path_session.c_str(), session_tokens.data(), session_tokens.capacity(), &n_token_count_out)) {
-                fprintf(stderr, "%s: error: failed to load session file '%s'\n", __func__, path_session.c_str());
-                return 1;
-            }
-            session_tokens.resize(n_token_count_out);
-            llama_set_rng_seed(ctx, params.seed);
-
-            fprintf(stderr, "%s: loaded a session with prompt size of %d tokens\n", __func__, (int) session_tokens.size());
-        } else {
-            fprintf(stderr, "%s: session file does not exist, will create\n", __func__);
-        }
-    }
-
-    // tokenize the prompt
-    std::vector<falcon_token> embd_inp;
-
-    if (params.interactive_first || params.instruct || !params.prompt.empty() || session_tokens.empty()) 
-    {
-        // Falcon does not have a dedicated bos token (bos==eos), so don't inject it here
-        // auto start = ggml_time_us();
-        embd_inp = ::falcon_tokenize(ctx, params.prompt, false);
-        // auto end = ggml_time_us();
-        // fprintf(stderr, "%s: tokenization took %0.3f ms\n", __func__, (end - start) / 1000.0);
-        // fprintf(stderr, "%s: tokens processed: %d\n", __func__, (int) embd_inp.size());
-        // fprintf(stderr, "%s: tokens/second : %0.3f\n", __func__, (embd_inp.size() / ((end - start) / 1000000.0)));
-    } else {
-        embd_inp = session_tokens;
-    }
-
-    const int n_ctx = falcon_n_ctx(ctx);
-
-    if ((int) embd_inp.size() > n_ctx - 4) {
-        fprintf(stderr, "%s: error: prompt is too long (%d tokens, max %d)\n", __func__, (int) embd_inp.size(), n_ctx - 4);
-        return 1;
-    }
-    falcon_prepare_buffers(ctx, params.n_batch, (int)(embd_inp.size()+1));
-    // debug message about similarity of saved session, if applicable
-    size_t n_matching_session_tokens = 0;
-    if (session_tokens.size()) {
-        for (falcon_token id : session_tokens) {
-            if (params.verbose_prompt)
-            {
-                const char *c_tk = falcon_token_to_str(ctx, id);
-                if (*c_tk == '\n') c_tk="\\n";
-                if (*c_tk == '\r') c_tk="\\r";
-                fprintf(stderr, "SESSION TOKEN: %6d -> '%s'\n", id, c_tk);
-            }
-            if (n_matching_session_tokens >= embd_inp.size() || id != embd_inp[n_matching_session_tokens]) {
-                break;
-            }
-            n_matching_session_tokens++;
-        }
-        if (params.prompt.empty() && n_matching_session_tokens == embd_inp.size()) {
-            fprintf(stderr, "%s: using full prompt from session file\n", __func__);
-        } else if (n_matching_session_tokens >= embd_inp.size()) {
-            fprintf(stderr, "%s: session file has exact match for prompt!\n", __func__);
-        } else if (n_matching_session_tokens < (embd_inp.size() / 2)) {
-            fprintf(stderr, "%s: warning: session file has low similarity to prompt (%zu / %zu tokens); will mostly be reevaluated\n",
-                __func__, n_matching_session_tokens, embd_inp.size());
-        } else {
-            fprintf(stderr, "%s: session file matches %zu / %zu tokens of prompt\n",
-                __func__, n_matching_session_tokens, embd_inp.size());
-        }
-    }
-
-    // if we will use the cache for the full prompt without reaching the end of the cache, force
-    // reevaluation of the last token token to recalculate the cached logits
-    if (!embd_inp.empty() && n_matching_session_tokens == embd_inp.size() &&
-            session_tokens.size() > embd_inp.size()) {
-        session_tokens.resize(embd_inp.size() - 1);
-    }
-
-    // number of tokens to keep when resetting context
-    if (params.n_keep < 0 || params.n_keep > (int) embd_inp.size() || params.instruct) {
-        params.n_keep = (int)embd_inp.size();
-    }
-
-    // prefix & suffix for instruct mode and finetune modes
+    std::vector<falcon_token> embd_inp; // tokenized prompt
     std::vector<falcon_token> inp_system = {}; // system prompt
     std::vector<falcon_token> inp_pfx = {}; // prefix to user prompt
     std::vector<falcon_token> inp_sfx = {}; // suffix to user prompt
     std::vector<std::vector<falcon_token>> stopwords = {};
 
+    
     if (params.stopwords.size())
     {
         std::string sw_token_str;
@@ -328,7 +239,9 @@ int main(int argc, char ** argv) {
     }
     #endif
         
-    // auto detect finetune type if not specified - it's not that easy to do for most tunes
+
+    // Handle and detect finetunes
+     // auto detect finetune type if not specified - it's not that easy to do for most tunes
     // --alias can be used to force a fine tune, otherwise often just the filename is helpful
     if (params.finetune_type == FINETUNE_UNSPECIFIED)
     {
@@ -383,6 +296,126 @@ int main(int argc, char ** argv) {
     if (params.system_prompt.size() && params.sys_prompt_is_raw)
         inp_system = ::falcon_tokenize(ctx, params.system_prompt, false);
 
+
+
+
+    std::string path_session = params.path_prompt_cache;
+    std::vector<falcon_token> session_tokens;
+
+    if (!path_session.empty()) {
+        fprintf(stderr, "%s: attempting to load saved session from '%s'\n", __func__, path_session.c_str());
+
+        // fopen to check for existing session
+        FILE * fp = std::fopen(path_session.c_str(), "rb");
+        if (fp != NULL) {
+            std::fclose(fp);
+
+            session_tokens.resize(params.n_ctx);
+            size_t n_token_count_out = 0;
+            if (!llama_load_session_file(ctx, path_session.c_str(), session_tokens.data(), session_tokens.capacity(), &n_token_count_out)) {
+                fprintf(stderr, "%s: error: failed to load session file '%s'\n", __func__, path_session.c_str());
+                return 1;
+            }
+            session_tokens.resize(n_token_count_out);
+            llama_set_rng_seed(ctx, params.seed);
+
+            fprintf(stderr, "%s: loaded a session with prompt size of %d tokens\n", __func__, (int) session_tokens.size());
+        } else {
+            fprintf(stderr, "%s: session file does not exist, will create\n", __func__);
+        }
+    }
+
+    // tokenize the prompt
+    
+
+    if (params.interactive_first || params.instruct || !params.prompt.empty() || session_tokens.empty()) 
+    {
+        // Falcon does not have a dedicated bos token (bos==eos), so don't inject it here
+        // auto start = ggml_time_us();
+        embd_inp = ::falcon_tokenize(ctx, params.prompt, false);
+        // auto end = ggml_time_us();
+        // fprintf(stderr, "%s: tokenization took %0.3f ms\n", __func__, (end - start) / 1000.0);
+        // fprintf(stderr, "%s: tokens processed: %d\n", __func__, (int) embd_inp.size());
+        // fprintf(stderr, "%s: tokens/second : %0.3f\n", __func__, (embd_inp.size() / ((end - start) / 1000000.0)));
+    } else {
+        embd_inp = session_tokens;
+    }
+
+    if ( !params.interactive && params.enclose_finetune && (inp_pfx.size() || inp_sfx.size()) )
+    {
+        // enclose finetune - non interactive mode
+        if (inp_pfx.size())
+        {
+            embd_inp.insert(embd_inp.begin(), inp_pfx.begin(), inp_pfx.end());
+        }
+        if (inp_system.size())
+        {
+            embd_inp.insert(embd_inp.begin(), inp_system.begin(), inp_system.end());
+        }
+        if (inp_sfx.size())
+        {
+            embd_inp.insert(embd_inp.end(), inp_sfx.begin(), inp_sfx.end());
+        }
+    }
+
+
+    const int n_ctx = falcon_n_ctx(ctx);
+
+    if ((int) embd_inp.size() > n_ctx - 4) {
+        fprintf(stderr, "%s: error: prompt is too long (%d tokens, max %d)\n", __func__, (int) embd_inp.size(), n_ctx - 4);
+        return 1;
+    }
+    falcon_prepare_buffers(ctx, params.n_batch, (int)(embd_inp.size()+1));
+    // debug message about similarity of saved session, if applicable
+    size_t n_matching_session_tokens = 0;
+    if (session_tokens.size()) {
+        for (falcon_token id : session_tokens) {
+            if (params.verbose_prompt)
+            {
+                const char *c_tk = falcon_token_to_str(ctx, id);
+                if (*c_tk == '\n') c_tk="\\n";
+                if (*c_tk == '\r') c_tk="\\r";
+                fprintf(stderr, "SESSION TOKEN MATCH: %6d -> '%s'\n", id, c_tk);
+            }
+            if (n_matching_session_tokens >= embd_inp.size() || id != embd_inp[n_matching_session_tokens]) {
+                if (params.verbose_prompt)
+                {
+                    const char *c_tk = falcon_token_to_str(ctx, id);
+                    if (*c_tk == '\n') c_tk="\\n";
+                    if (*c_tk == '\r') c_tk="\\r";
+                    fprintf(stderr, "SESSION TOKEN MISMATCH: %6d -> '%s'\n", id, c_tk);
+                }
+                break;
+            }
+            n_matching_session_tokens++;
+        }
+        if (params.prompt.empty() && n_matching_session_tokens == embd_inp.size()) {
+            fprintf(stderr, "%s: using full prompt from session file\n", __func__);
+        } else if (n_matching_session_tokens >= embd_inp.size()) {
+            fprintf(stderr, "%s: session file has exact match for prompt!\n", __func__);
+        } else if (n_matching_session_tokens < (embd_inp.size() / 2)) {
+            fprintf(stderr, "%s: warning: session file has low similarity to prompt (%zu / %zu tokens); will mostly be reevaluated\n",
+                __func__, n_matching_session_tokens, embd_inp.size());
+        } else {
+            fprintf(stderr, "%s: session file matches %zu / %zu tokens of prompt\n",
+                __func__, n_matching_session_tokens, embd_inp.size());
+        }
+    }
+
+    // if we will use the cache for the full prompt without reaching the end of the cache, force
+    // reevaluation of the last token token to recalculate the cached logits
+    if (!embd_inp.empty() && n_matching_session_tokens == embd_inp.size() &&
+            session_tokens.size() > embd_inp.size()) {
+        session_tokens.resize(embd_inp.size() - 1);
+    }
+
+    // number of tokens to keep when resetting context
+    if (params.n_keep < 0 || params.n_keep > (int) embd_inp.size() || params.instruct) {
+        params.n_keep = (int)embd_inp.size();
+    }
+
+
+   
     // in instruct mode, we inject a prefix and a suffix to each input by the user
     if (params.instruct) {
         
@@ -742,25 +775,6 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
         } else 
         {
             // some user input remains from prompt or interaction, forward it to processing
-            if (n_past == 0)
-            {
-                if ( !params.interactive && params.enclose_finetune && (inp_pfx.size() || inp_sfx.size()) )
-                {
-                    // enclose finetune - non interactive mode
-                    if (inp_pfx.size())
-                    {
-                        embd_inp.insert(embd_inp.begin(), inp_pfx.begin(), inp_pfx.end());
-                    }
-                    if (inp_system.size())
-                    {
-                        embd_inp.insert(embd_inp.begin(), inp_system.begin(), inp_system.end());
-                    }
-                    if (inp_sfx.size())
-                    {
-                        embd_inp.insert(embd_inp.end(), inp_sfx.begin(), inp_sfx.end());
-                    }
-                }
-            }
             while ((int) embd_inp.size() > n_consumed) { // push input tokens into embd (n_batch)
                 embd.push_back(embd_inp[n_consumed]);
                 last_n_tokens.erase(last_n_tokens.begin());
@@ -946,10 +960,13 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
         #endif
 
         // end of text token
-        if (!embd.empty() && embd.back() == falcon_token_eos()) {
-            if (params.instruct) {
+        if (!embd.empty() && embd.back() == falcon_token_eos() || stopword_fulfilled) 
+        {
+            if (params.instruct) 
+            {
                 is_interacting = true;
-            } else {
+            } else 
+            {
                 if (params.verbose_prompt)
                     fprintf(stderr, " [end of text]\n");
                 // if we are in the prompt ingestion we will not stop
