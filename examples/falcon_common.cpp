@@ -314,6 +314,8 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
                 break;
             }
             params.system_prompt = argv[i];
+        } else if (arg == "-sysraw" || arg == "--system-raw") {
+            params.sys_prompt_is_raw = true;
         }
         else if (arg == "--lora") {
             if (++i >= argc) {

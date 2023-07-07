@@ -183,11 +183,11 @@ extern "C" {
     // Copies the state to the specified destination address.
     // Destination needs to have allocated enough memory.
     // Returns the number of bytes copied
-    LLAMA_API size_t llama_copy_state_data(struct falcon_context * ctx, uint8_t * dst);
+    LLAMA_API size_t falcon_copy_state_data(struct falcon_context * ctx, uint8_t * dst);
 
     // Set the state reading from the specified address
     // Returns the number of bytes read
-    LLAMA_API size_t llama_set_state_data(struct falcon_context * ctx, uint8_t * src);
+    LLAMA_API size_t falcon_set_state_data(struct falcon_context * ctx, uint8_t * src);
 
     // Save/load session file
     LLAMA_API bool llama_load_session_file(struct falcon_context * ctx, const char * path_session, falcon_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out);

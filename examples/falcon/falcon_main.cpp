@@ -253,6 +253,13 @@ int main(int argc, char ** argv) {
     size_t n_matching_session_tokens = 0;
     if (session_tokens.size()) {
         for (falcon_token id : session_tokens) {
+            if (params.verbose_prompt)
+            {
+                const char *c_tk = falcon_token_to_str(ctx, id);
+                if (*c_tk == '\n') c_tk="\\n";
+                if (*c_tk == '\r') c_tk="\\r";
+                fprintf(stderr, "SESSION TOKEN: %6d -> '%s'\n", id, c_tk);
+            }
             if (n_matching_session_tokens >= embd_inp.size() || id != embd_inp[n_matching_session_tokens]) {
                 break;
             }
@@ -335,14 +342,14 @@ int main(int argc, char ** argv) {
             case FINETUNE_ALPACA:
                 inp_pfx = ::falcon_tokenize(ctx, "\n\n### Instruction:\n\n", false);
                 inp_sfx = ::falcon_tokenize(ctx, "\n\n### Response:\n\n", false);
-                if (params.system_prompt.size())
-                inp_system = ::falcon_tokenize(ctx, params.system_prompt+"\n\n", false);
+                if (params.system_prompt.size() &&!params.sys_prompt_is_raw)
+                    inp_system = ::falcon_tokenize(ctx, params.system_prompt+"\n\n", false);
                 break;
             case FINETUNE_OPENASSISTANT:
                 //<|prefix_begin|>You are a helpful Assistant called Falcon<|prefix_end|>
                 inp_pfx = ::falcon_tokenize(ctx, "<|prompter|>", false);
                 inp_sfx = ::falcon_tokenize(ctx, "<|endoftext|><|assistant|>", false);
-                if (params.system_prompt.size())
+                if (params.system_prompt.size() &&!params.sys_prompt_is_raw)
                 {
                     inp_system = ::falcon_tokenize(ctx, "<|system|>Behavior:"+params.system_prompt+"<|endoftext|>", false);
                     // inp_system = ::falcon_tokenize(ctx, "<|prefix_begin|>"+params.system_prompt+"<|prefix_end|>", false);
@@ -351,20 +358,20 @@ int main(int argc, char ** argv) {
             case FINETUNE_WIZARD:
                 inp_pfx = {};
                 inp_sfx = ::falcon_tokenize(ctx, "\n### Response:", false);
-                if (params.system_prompt.size())
-                inp_system = ::falcon_tokenize(ctx, "### Behavior:\""+params.system_prompt+"\"\n", false);
+                if (params.system_prompt.size() &&!params.sys_prompt_is_raw)
+                    inp_system = ::falcon_tokenize(ctx, "### Behavior:\""+params.system_prompt+"\"\n", false);
                 break;
             case FINETUNE_FALCONINSTRUCT:
                 inp_pfx = ::falcon_tokenize(ctx, "User: \"", false);
                 inp_sfx = ::falcon_tokenize(ctx, "\"\nAssistant:", false); // must not include space
-                if (params.system_prompt.size())
-                inp_system = ::falcon_tokenize(ctx, "System command: \""+params.system_prompt+"\"\n", false);
+                if (params.system_prompt.size() &&!params.sys_prompt_is_raw)
+                    inp_system = ::falcon_tokenize(ctx, "System command: \""+params.system_prompt+"\"\n", false);
                 break;
             default:
                 inp_pfx = ::falcon_tokenize(ctx, ">>QUESTION<<", false);
                 inp_sfx = ::falcon_tokenize(ctx, "\n>>ANSWER<<", false);
-                if (params.system_prompt.size())
-                inp_system = ::falcon_tokenize(ctx, ">>PREFIX<<"+params.system_prompt+"\n\n", false);
+                if (params.system_prompt.size() &&!params.sys_prompt_is_raw)
+                    inp_system = ::falcon_tokenize(ctx, ">>PREFIX<<"+params.system_prompt+"\n\n", false);
                 if (params.stopwords.size() == 0)
                 {
                     stopwords.push_back(::falcon_tokenize(ctx, ">>COMMENT<<", false));
@@ -372,6 +379,10 @@ int main(int argc, char ** argv) {
                 break;
         }
     }
+    // the raw system prompt
+    if (params.system_prompt.size() && params.sys_prompt_is_raw)
+        inp_system = ::falcon_tokenize(ctx, params.system_prompt, false);
+
     // in instruct mode, we inject a prefix and a suffix to each input by the user
     if (params.instruct) {
         
@@ -386,7 +397,7 @@ int main(int argc, char ** argv) {
 
     // determine newline token
     //auto llama_token_newline = ::falcon_tokenize(ctx, "\n", false);
-    auto falcon_token_newline = std::vector<falcon_token>(193);
+    auto falcon_token_newline = falcon_token_nl();
 
     if (params.verbose_prompt) {
         fprintf(stderr, "\n");
@@ -538,7 +549,9 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
             // if we run out of context:
             // - take the n_keep first tokens from the original prompt (via n_past)
             // - take half of the last (n_ctx - n_keep) tokens and recompute the logits in batches
-            if (n_past + (int) embd.size() > n_ctx) {
+            #if 1
+            if (n_past + (int) embd.size() > n_ctx) 
+            {
                 const int n_left = n_past - params.n_keep;
 
                 n_past = params.n_keep;
@@ -555,6 +568,24 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
                 //}
                 //printf("'\n");
                 //printf("\n---\n");
+                if (params.verbose_prompt)
+                {
+                    fprintf(stderr, "\n#CONTEXT_RESET_START: ");
+                    for (int i = 0; i < (int) embd.size(); i++) {
+                        fprintf(stderr, "%d => %s, ", embd[i], falcon_token_to_str(ctx, embd[i]));
+                    }
+                    fprintf(stderr, " #RESET_END\n");
+                }
+            }
+            #endif
+            // New mode:
+            /**
+             * 1. n_keep needs to be set to the system prompt if one is used
+             * 2. instead of reprocessing half of the context, we just cut the top parts of kv_cache without reprocessing
+            */
+            if (n_past + (int) embd.size() > n_ctx) 
+            {
+                
             }
 
             // try to reuse a matching prefix from the loaded session instead of re-eval (via n_past)
@@ -729,7 +760,7 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
                     }
                 }
             }
-            while ((int) embd_inp.size() > n_consumed) {
+            while ((int) embd_inp.size() > n_consumed) { // push input tokens into embd (n_batch)
                 embd.push_back(embd_inp[n_consumed]);
                 last_n_tokens.erase(last_n_tokens.begin());
                 last_n_tokens.push_back(embd_inp[n_consumed]);
@@ -764,14 +795,16 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
             {
                 if (params.verbose_prompt) 
                     fprintf(stderr, " [stopword]\n");
-                break;
+                if (!params.interactive)
+                    break;
             }
         }
         // display text
         if (input_echo) 
         {
             for (auto id : embd) {
-                if (params.instruct && id == falcon_token_eos()) {
+                if ((params.instruct && id == falcon_token_eos()) || stopword_fulfilled) 
+                {
                     id = falcon_token_nl();
                 }
                 printf("%s", falcon_token_to_str(ctx, id));
@@ -873,6 +906,7 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
                 // system prompt injection
                 if (params.interactive && params.antiprompt.size()==0 && n_consumed == 0 && inp_system.size()) 
                 {
+                    // fprintf(stderr, "\n%s: injecting system prompt\n", __func__);
                     embd_inp.insert(embd_inp.begin(), inp_system.begin(), inp_system.end());
                 } 
                 if (embd_inp.size())
