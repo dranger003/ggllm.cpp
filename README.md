@@ -61,6 +61,11 @@ _The Falcon 7B model features tensor sizes which are not yet supported by K-type
   
 **Status/Bugs:**  
 - nothing major
+
+**Windows application binary download**
+It's always recommended to compile ggllm.cpp fresh yourself so you benefit from the latest features.  
+However, in regular intervals full binary compilations are generated: https://github.com/cmp-nct/ggllm.cpp/releases/  
+The "master" files contain the executables.
   
 **How to compile ggllm.cpp:**
 1) Recommended with cmake: (change the CUBLAS flag to 0 to disable CUDA requirements and support)
