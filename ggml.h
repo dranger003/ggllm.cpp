@@ -1558,6 +1558,7 @@ extern "C" {
     //
     #define GGML_CUSTOM_F_ROPE_ANG_SCALE 0 // theta pre scale
     #define GGML_CUSTOM_I_ROPE_ANG_FREQ 0 // frequency base for rotation in hz
+    // #define GGML_CUSTOM_I_ROPE_ANG_PHASE_N 1 // phase offset for rotation in number of tokens from default
 
 
 
