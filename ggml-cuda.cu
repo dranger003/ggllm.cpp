@@ -2432,9 +2432,12 @@ inline void ggml_cuda_op_rope(
     const int mode   = ((int32_t *) src1->data)[2];
     GGML_ASSERT(mode == 0);
 
-    const float theta_scale = powf(10000.0, -2.0f/n_dims);
-    const float p = ((mode & 1) == 0 ? n_past + i02 : i02);
-
+    const float theta_scale = powf((float)(dst->meta.i_custom[GGML_CUSTOM_I_ROPE_ANG_FREQ]?dst->meta.i_custom[GGML_CUSTOM_I_ROPE_ANG_FREQ]:10000), -2.0f/n_dims);
+    float p = ((mode & 1) == 0 ? n_past + i02 : i02);
+    // custom 2d rotation angle scale (needs a test - blind adapted)
+    if (dst->meta.f_custom[GGML_CUSTOM_F_ROPE_ANG_SCALE] != 0.0f) {
+        p *= dst->meta.f_custom[GGML_CUSTOM_F_ROPE_ANG_SCALE];
+    }
     // compute
     rope_f32_cuda(src0_ddf_i, dst_ddf_i, ne00, i01_diff, p, theta_scale, cudaStream_main);
 
