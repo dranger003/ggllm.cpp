@@ -268,8 +268,8 @@ int main(int argc, char ** argv) {
                     // inp_system = ::falcon_tokenize(ctx, ">>DOMAIN<<<|prefix_begin|>"+params.system_prompt+"<|prefix_end|>", false);
                     // inp_system = ::falcon_tokenize(ctx, "<|prefix_begin|>"+params.system_prompt+"<|prefix_end|>", false);
                     //inp_system = ::falcon_tokenize(ctx, "<|prompter|>"+params.system_prompt+" Okay?<|endoftext|><|assistant|>Okay<|endoftext|>", false);
-                    inp_system = ::falcon_tokenize(ctx, "<|prompter|>"+params.system_prompt+"<|endoftext|>", false);
-                    //inp_system = ::falcon_tokenize(ctx, ">>INTRODUCTION<<"+params.system_prompt+"\n<|endoftext|>", false);
+                    //inp_system = ::falcon_tokenize(ctx, "<|prompter|>"+params.system_prompt+"<|endoftext|>", false);
+                    inp_system = ::falcon_tokenize(ctx, ">>SUMMARY<<"+params.system_prompt+"<|endoftext|>", false);
                     if(!params.sys_prompt_simple)
                     {
                         //inp_system_baseline = ::falcon_tokenize(ctx, "<|prompter|>"+params.system_baseline_prompt+" Okay?<|endoftext|><|assistant|>Okay<|endoftext|>", false);
