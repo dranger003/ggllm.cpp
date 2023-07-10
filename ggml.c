@@ -17234,8 +17234,8 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
                     if (GGML_OP_HAS_FINALIZE[node->op]) {
                         params.type = GGML_TASK_FINALIZE;
                         ggml_compute_forward(&params, node);
-                        ggml_graph_compute_perf_stats_node(node, state->shared);
-                    }
+                    } 
+                    ggml_graph_compute_perf_stats_node(node, state->shared);
                 } else {
                     break;
                 }
@@ -17269,10 +17269,11 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
         if (state->ith < node->n_tasks) {
             ggml_compute_forward(&params, node);
         }
-        }
+        ggml_graph_compute_perf_stats_node(node, state->shared);
+    }
 
-        return 0;
-        }
+    return 0;
+    }
 
 void ggml_graph_compute(struct ggml_context * ctx, struct ggml_cgraph * cgraph) {
     const int n_threads = cgraph->n_threads;
@@ -18246,6 +18247,8 @@ void ggml_graph_print_impl(const struct ggml_cgraph * cgraph, bool print_nodes, 
     GGML_PRINT("n_nodes = %d\n", cgraph->n_nodes);
     for (int i = 0; i < cgraph->n_nodes; i++) {
         struct ggml_tensor * node = cgraph->nodes[i];
+        node->perf_time_us = MAX(node->perf_time_us, 1);  // should not happen anymore
+        node->perf_runs = MAX(node->perf_runs, 1);
 
         perf_total_per_op_us[node->op] += MAX(1, node->perf_time_us);
         perf_array[i] = node->perf_time_us / node->perf_runs;

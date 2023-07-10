@@ -3793,7 +3793,7 @@ struct falcon_context * falcon_init_from_file(
             }
         };
     }
-
+    int64_t t_start_us = ggml_time_us();
     ggml_type memory_type = params.f16_kv ? GGML_TYPE_F16 : GGML_TYPE_F32;
     falcon_model *model = falcon_model_load(path_model, params.n_ctx, params.n_batch, params.n_gpu_layers,
                 params.main_gpu, memory_type, params.use_mmap, params.use_mlock,
@@ -3808,7 +3808,8 @@ struct falcon_context * falcon_init_from_file(
     params.i_gpu_start = model->i_gpu_start; // first layer that's GPU accelerated
     params.i_gpu_last = model->i_gpu_last; // last layer that's GPU accelerated
     falcon_context * f_ctx = falcon_context_prepare(params, model, "falcon_main",true);
-    
+    f_ctx->t_load_us = ggml_time_us() - t_start_us;
+    f_ctx->t_start_us = t_start_us;
     //falcon_context_set_buffers(f_ctx,params.n_batch,params.n_ctx);
     //const size_t memory_size = ggml_nbytes(model->kv_self.k) + ggml_nbytes(model->kv_self.v);
     //fprintf(stderr, "%s: RAM buffers - key_val = %7.2f MB, Compute = %7.2f MB, Scratch 0 = %7.2f MB, Scratch 1 = %7.2f MB \n", __func__, memory_size / 1024.0 / 1024.0, f_ctx->buf_compute.size /1024.0/1024.0, (f_ctx->buf_scratch[0].size)/1024.0/1024.0, (f_ctx->buf_scratch[1].size)/1024.0/1024.0);
