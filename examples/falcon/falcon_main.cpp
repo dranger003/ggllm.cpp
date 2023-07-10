@@ -267,8 +267,9 @@ int main(int argc, char ** argv) {
                 {
                     // inp_system = ::falcon_tokenize(ctx, ">>DOMAIN<<<|prefix_begin|>"+params.system_prompt+"<|prefix_end|>", false);
                     // inp_system = ::falcon_tokenize(ctx, "<|prefix_begin|>"+params.system_prompt+"<|prefix_end|>", false);
-                    // inp_system = ::falcon_tokenize(ctx, "<|prompter|>"+params.system_prompt+" Okay?<|endoftext|><|assistant|>Okay<|endoftext|>", false);
-                    inp_system = ::falcon_tokenize(ctx, ">>INTRODUCTION<<"+params.system_prompt+"\n<|endoftext|>", false);
+                    //inp_system = ::falcon_tokenize(ctx, "<|prompter|>"+params.system_prompt+" Okay?<|endoftext|><|assistant|>Okay<|endoftext|>", false);
+                    inp_system = ::falcon_tokenize(ctx, "<|prompter|>"+params.system_prompt+"<|endoftext|>", false);
+                    //inp_system = ::falcon_tokenize(ctx, ">>INTRODUCTION<<"+params.system_prompt+"\n<|endoftext|>", false);
                     if(!params.sys_prompt_simple)
                     {
                         //inp_system_baseline = ::falcon_tokenize(ctx, "<|prompter|>"+params.system_baseline_prompt+" Okay?<|endoftext|><|assistant|>Okay<|endoftext|>", false);
@@ -1031,6 +1032,7 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
             // get user interactive input
             if (n_past >= 0 && is_interacting) 
             {
+                
                 if (params.instruct) {
                     printf("\n> ");
                 }
@@ -1051,9 +1053,9 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
                 // done taking input, reset color
                 console_set_color(con_st, CONSOLE_COLOR_DEFAULT);
             }
+            std::vector<falcon_token> additional_input={};
             if (n_past >= 0 && (is_interacting)) 
             {
-                std::vector<falcon_token> additional_input={};
                 // Add tokens to embd only if the input buffer is non-empty
                 // Entering a empty line lets the user pass control back
                 if (buffer.length() > 1) {
@@ -1073,11 +1075,12 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
                     additional_input.insert(additional_input.end(), line_inp.begin(), line_inp.end());
 
                     // instruct mode: insert response suffix
-                    if (params.enclose_finetune) {
+                    if (params.enclose_finetune && !is_antiprompt) {
                         additional_input.insert(additional_input.end(), inp_sfx.begin(), inp_sfx.end());
                     }
                     embd_inp.insert(embd_inp.end(), additional_input.begin(), additional_input.end());
                     n_remain -= (int)additional_input.size(); // ugh - don't like ignoring the prompts. needs a audit
+                    is_interacting = false;
                 }
 
                 if (additional_input.size())
@@ -1102,7 +1105,7 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
             } 
 
             if (n_past >= 0) {
-                is_interacting = false;
+                // is_interacting = false;
             }
         }
         #if 0
@@ -1118,8 +1121,8 @@ fprintf(stderr, "+------------+-------+-------+-------+-------+---------------+-
         }
         #endif
 
-        // end of text token
-        if (!embd.empty() && embd.back() == falcon_token_eos() || stopword_fulfilled) 
+        // end of text token or stopword detected in generated content
+        if ((!embd.empty() && embd.back() == falcon_token_eos() && n_past > embd_inp.size()) || stopword_fulfilled) 
         {
             if (params.instruct) 
             {
