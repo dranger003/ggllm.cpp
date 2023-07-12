@@ -323,6 +323,11 @@ extern "C" {
     // Print system information
     LLAMA_API const char * falcon_print_system_info(int n_threads, int n_cores);
 
+    LLAMA_API const GPUStatus* falcon_cuda_get_system_gpu_status();
+    LLAMA_API void falcon_cuda_print_gpu_status(const GPUStatus* status, bool print_summary);
+    LLAMA_API void falcon_cuda_set_max_gpus();
+    LLAMA_API void falcon_cuda_set_main_device();
+
 #ifdef __cplusplus
 }
 #endif

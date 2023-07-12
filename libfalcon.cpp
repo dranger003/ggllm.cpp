@@ -4636,3 +4636,19 @@ const char * falcon_print_system_info(int n_threads, int n_cores) {
 std::vector<std::pair<std::string, struct ggml_tensor *>>& llama_internal_get_tensor_map(struct falcon_context * ctx) {
     return ctx->model.tensors_by_name;
 }
+
+const GPUStatus* falcon_cuda_get_system_gpu_status() {
+    return ggml_cuda_get_system_gpu_status();
+}
+
+void falcon_cuda_print_gpu_status(const GPUStatus* status, bool print_summary) {
+    return ggml_cuda_print_gpu_status(status, print_summary);
+}
+
+void falcon_cuda_set_max_gpus() {
+    ggml_cuda_set_max_gpus(LLAMA_MAX_DEVICES);
+}
+
+void falcon_cuda_set_main_device() {
+    ggml_cuda_set_main_device(0);
+}

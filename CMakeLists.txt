@@ -1,14 +1,7 @@
 cmake_minimum_required(VERSION 3.12) # Don't bump this version for no reason
-# If CUDA toolkit is not found using msvc compiler switch to Community Edition (same compiler, just other kit..)
 project("ggllm.cpp" C CXX)
-add_definitions(-DGGML_PERF=1) # use "--debug-timings 1-3" to enable timing output
 
-if(WIN32)
-    include_directories("C:/program files/NVIDIA GPU Computing Toolkit/CUDA/v12.0/include")
-    include_directories("C:/program files/NVIDIA GPU Computing Toolkit/CUDA/v12.0/lib/x64")
-else()
-    include_directories("/usr/local/cuda/include")
-endif()
+add_definitions(-DGGML_PERF=1) # use "--debug-timings 1-3" to enable timing output
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -77,8 +70,10 @@ option(LLAMA_ACCELERATE                      "llama: enable Accelerate framework
 option(LLAMA_BLAS                            "llama: use BLAS"                                  OFF)
 set(LLAMA_BLAS_VENDOR "Generic" CACHE STRING "llama: BLAS library vendor")
 option(LLAMA_CUBLAS                          "llama: use cuBLAS"                                ON)
+option(LLAMA_CUDA_FORCE_DMMV                 "llama: use dmmv instead of mmvq CUDA kernels"     OFF)
 set(LLAMA_CUDA_DMMV_X      "32" CACHE STRING "llama: x stride for dmmv CUDA kernels")
-set(LLAMA_CUDA_DMMV_Y       "1" CACHE STRING "llama: y block size for dmmv CUDA kernels")
+set(LLAMA_CUDA_MMV_Y        "1" CACHE STRING "llama: y block size for mmv CUDA kernels")
+option(LLAMA_CUDA_DMMV_F16                   "llama: use 16 bit floats for dmmv CUDA kernels"   OFF)
 set(LLAMA_CUDA_KQUANTS_ITER "2" CACHE STRING "llama: iters./thread per block for Q2_K/Q6_K")
 option(LLAMA_CLBLAST                         "llama: use CLBlast"                               OFF)
 option(LLAMA_METAL                           "llama: use Metal"                                 OFF)
@@ -246,8 +241,17 @@ if (LLAMA_CUBLAS)
         set(GGML_SOURCES_CUDA ggml-cuda.cu ggml-cuda.h)
 
         add_compile_definitions(GGML_USE_CUBLAS)
+        if (LLAMA_CUDA_FORCE_DMMV)
+            add_compile_definitions(GGML_CUDA_FORCE_DMMV)
+        endif()
         add_compile_definitions(GGML_CUDA_DMMV_X=${LLAMA_CUDA_DMMV_X})
-        add_compile_definitions(GGML_CUDA_DMMV_Y=${LLAMA_CUDA_DMMV_Y})
+        add_compile_definitions(GGML_CUDA_MMV_Y=${LLAMA_CUDA_MMV_Y})
+        if (DEFINED LLAMA_CUDA_DMMV_Y)
+            add_compile_definitions(GGML_CUDA_MMV_Y=${LLAMA_CUDA_DMMV_Y}) # for backwards compatibility
+        endif()
+        if (LLAMA_CUDA_DMMV_F16)
+            add_compile_definitions(GGML_CUDA_DMMV_F16)
+        endif()
         add_compile_definitions(K_QUANTS_PER_ITERATION=${LLAMA_CUDA_KQUANTS_ITER})
 
         if (LLAMA_STATIC)
@@ -255,6 +259,15 @@ if (LLAMA_CUBLAS)
         else()
             set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} CUDA::cudart CUDA::cublas CUDA::cublasLt)
         endif()
+
+    if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        if (LLAMA_CUDA_DMMV_F16)
+            set(CMAKE_CUDA_ARCHITECTURES "61") # needed for f16 CUDA intrinsics
+        else()
+            set(CMAKE_CUDA_ARCHITECTURES "52;61") # lowest CUDA 12 standard + lowest for integer intrinsics
+        endif()
+    endif()
+    message(STATUS "Using CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 
     else()
         message(WARNING "cuBLAS not found")
@@ -379,11 +392,6 @@ if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm" OR ${CMAKE_SYSTEM_PROCESSOR} MATCHES
     if (MSVC)
         # TODO: arm msvc?
     else()
-        if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64")
-            # Apple M1, M2, etc.
-            # Raspberry Pi 3, 4, Zero 2 (64-bit)
-            add_compile_options(-mcpu=native)
-        endif()
         if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "armv6")
             # Raspberry Pi 1, Zero
             add_compile_options(-mfpu=neon-fp-armv8 -mfp16-format=ieee -mno-unaligned-access)
@@ -475,6 +483,7 @@ add_library(ggml_static STATIC $<TARGET_OBJECTS:ggml>)
 if (BUILD_SHARED_LIBS)
     set_target_properties(ggml PROPERTIES POSITION_INDEPENDENT_CODE ON)
     add_library(ggml_shared SHARED $<TARGET_OBJECTS:ggml>)
+    target_link_libraries(ggml_shared PUBLIC Threads::Threads ${LLAMA_EXTRA_LIBS})
 endif()
 
 add_library(llama
@@ -523,16 +532,6 @@ if (BUILD_SHARED_LIBS)
         set_target_properties(falcon PROPERTIES RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/ggml-metal.metal")
     endif()
     #
-endif()
-
-if (GGML_SOURCES_CUDA)
-    message(STATUS "GGML CUDA sources found, configuring CUDA architecture")
-    set_property(TARGET ggml  PROPERTY CUDA_ARCHITECTURES OFF)
-    set_property(TARGET ggml  PROPERTY CUDA_SELECT_NVCC_ARCH_FLAGS "Auto")
-    set_property(TARGET llama PROPERTY CUDA_ARCHITECTURES OFF)
-    # falcon
-    set_property(TARGET falcon  PROPERTY CUDA_ARCHITECTURES OFF)
-
 endif()
 
 
