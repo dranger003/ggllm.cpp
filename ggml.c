@@ -12872,8 +12872,30 @@ static void ggml_compute_forward_rope_f32(
 
     // row index used to determine which thread to use
     int ir = 0;
+    const float freq_base = (float)(dst->meta.i_custom[GGML_CUSTOM_I_ROPE_ANG_FREQ]?dst->meta.i_custom[GGML_CUSTOM_I_ROPE_ANG_FREQ]:10000);
+    // NTK paper type alpha modification
+    float alpha = 1.0f;
+    GGML_ASSERT(dst->meta.f_custom[GGML_CUSTOM_F_ROPE_NTK_ALPHA] > 1.0f || dst->meta.i_custom[GGML_CUSTOM_I_ROPE_DYNAMIC_MODE] == 0);
 
-    const float theta_scale = powf((float)(dst->meta.i_custom[GGML_CUSTOM_I_ROPE_ANG_FREQ]?dst->meta.i_custom[GGML_CUSTOM_I_ROPE_ANG_FREQ]:10000), -2.0f/n_dims);
+    
+    if (dst->meta.i_custom[GGML_CUSTOM_I_ROPE_DYNAMIC_MODE])
+    {
+        float scale = (float)dst->meta.f_custom[GGML_CUSTOM_F_ROPE_NTK_ALPHA];
+        if (n_ctx < 2048) 
+            alpha=1.0; 
+        else
+            alpha = powf( ((n_ctx/2048)-1)*scale+1, n_dims / (n_dims - 2.0) );
+    } else
+    {
+        // simple NTK aware scaling - needs fine tuning
+        if (dst->meta.f_custom[GGML_CUSTOM_F_ROPE_NTK_ALPHA] != 0.0f) {
+            alpha = dst->meta.f_custom[GGML_CUSTOM_F_ROPE_NTK_ALPHA];
+            alpha = powf(alpha, n_dims / (n_dims - 2.0));
+            // printf("alpha = %f = %f ^ (%d / (%d - 2.0))\n", alpha, dst->meta.f_custom[GGML_CUSTOM_F_ROPE_NTK_ALPHA], n_dims, n_dims);
+        }
+    }
+    
+    const float theta_scale = powf(alpha * freq_base, -2.0f/n_dims);
 
     const bool is_neox = mode & 2;
     const bool is_glm  = mode & 4;
@@ -13125,7 +13147,7 @@ static void ggml_compute_forward_rope(
 }
 
 // ggml_compute_forward_rope_back
-
+// todo: add the custom frequency/scale
 static void ggml_compute_forward_rope_back_f32(
         const struct ggml_compute_params * params,
         const struct ggml_tensor * src0,
@@ -19540,60 +19562,80 @@ size_t ggml_quantize_chunk(enum ggml_type type, const float * src, void * dst, i
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void ggml_printTensorSample(char *prefix,const struct ggml_tensor * tensor) {
+void ggml_printTensorSample(const char *prefix, const struct ggml_tensor * tensor) {
     const char *sep = "+-------------------------------------------------------------------------------------------+\n";
-    printf("%s",  sep);
-    printf("| Content of %s \"%s\" (%d dim)",prefix,tensor->name,tensor->n_dims);
-    printf("\n");
-    const int max_elements = 40000;
+    printf("%s| Content of %s \"%s\" (%d dim)\n", sep, prefix, tensor->name, tensor->n_dims);
     
-    if (tensor->n_dims == 1) {
-        printf("| ");
-        for(int i = 0; i < tensor->ne[0] && i < max_elements; i++){
-            printf("%-20f ", (double) *(float *)((char *) tensor->data + i*tensor->nb[0])); 
+    const int MAX_ELEMENTS_ROW = 10;
+    const int MAX_ELEMENTS_COL = 6;
+    const int MAX_ELEMENTS_LAYER = 3;  // layered
+    const int MAX_ELEMENTS_BATCH = 2;   // repeated display
+    const char *dimensionLabels[] = {"Row", "Col", "Layer", "Batch"};
+
+    printf("\n%s| Content of %s \"%s\" (%d dim)\n", sep, prefix, tensor->name, tensor->n_dims);
+    printf("| Total Elements : [ ");
+    for (int i = 0; i < tensor->n_dims; i++)
+        printf("%s:%-3" PRId64 " ", dimensionLabels[i], tensor->ne[i]);
+    printf("]\n%s", sep);
+
+     if (tensor->n_dims == 1) {
+        printf("| 1: ");
+        for(int i = 0; i < tensor->ne[0] && i < MAX_ELEMENTS_ROW; i++){
+            printf("%-7.3f, ",  *(double *)((char *) tensor->data + i*tensor->nb[0]));
         }
-        printf("|");
-        printf("\n");
-        printf("%s",  sep);
+        if(MAX_ELEMENTS_ROW < tensor->ne[0]) printf(", ..");
+        printf("\n%s", sep);
     }
     else if (tensor->n_dims == 2) {
-        for(int i = 0; i < tensor->ne[0] && i < max_elements; i++){
-            printf("| ");
-            for(int j = 0; j < tensor->ne[1] && j < max_elements; j++){
-                printf("%-20f ", (double) *(float *)((char *) tensor->data + i*tensor->nb[0] + j*tensor->nb[1]));
+        for(int i = 0; i < tensor->ne[0] && i < MAX_ELEMENTS_ROW; i++){
+            printf("| %d: ", i+1);
+            for(int j = 0; j < tensor->ne[1] && j < MAX_ELEMENTS_COL; j++){
+                printf("%-7.3f ",  *(double *)((char *) tensor->data + i*tensor->nb[0] + j*tensor->nb[1]));
+                if(j == MAX_ELEMENTS_COL - 1 && tensor->ne[1] > MAX_ELEMENTS_COL) printf(", ..");
             }
-            printf("|");
             printf("\n");
         }
-        printf("%s",  sep);
-    }
-    else if(tensor->n_dims == 3) {
-        for(int i = 0; i < tensor->ne[0] && i < 3; i++){
-            printf("Layer %d\n", i);
-            for(int j = 0; j < tensor->ne[1] && j < max_elements; j++){
-                printf("| ");
-                for(int k = 0; k < tensor->ne[2] && k < max_elements; k++){
-                    printf("%-20f ", (double) *(float *)((char *) tensor->data + i*tensor->nb[0] + j*tensor->nb[1] + k*tensor->nb[2]));
+        if(MAX_ELEMENTS_ROW < tensor->ne[0]) printf("     .. additional rows\n");
+        printf("%s", sep);
+    }else if(tensor->n_dims == 3) {
+        for(int i = 0; i < tensor->ne[0] && i < MAX_ELEMENTS_ROW; i++){
+            printf("| Row %d: ", i+1);
+            for(int j = 0; j < tensor->ne[1] && j < MAX_ELEMENTS_COL; j++){
+                printf("[");
+                for(int k = 0; k < tensor->ne[2] && k < MAX_ELEMENTS_LAYER; k++){
+                    printf("%-7.3f",  *(double *)((char *) tensor->data + i*tensor->nb[0] + j*tensor->nb[1] + k*tensor->nb[2]));
+                    if(k < tensor->ne[2] - 1 && k < MAX_ELEMENTS_LAYER - 1) 
+                        printf(", ");
                 }
-                printf("|\n");
+                if(MAX_ELEMENTS_LAYER < tensor->ne[2]) printf(", ..");
+                printf("] ");
             }
-            printf("%s\n",  sep);
+            printf("\n");
         }
+        if(MAX_ELEMENTS_ROW < tensor->ne[0]) printf("     ... additional layers\n");
+        printf("%s", sep);
     }
-    else if(tensor->n_dims == 4){
-        for(int i = 0; i < tensor->ne[0] && i < 3; i++){
-            printf("Batch %d\n", i);
-            for(int j = 0; j < tensor->ne[1] && j < 3; j++){
-                printf("Layer %d\n", j);
-                for(int k = 0; k < tensor->ne[2] && k < max_elements; k++){
-                    printf("| ");
-                    for(int l = 0; l < tensor->ne[3] && l < 3; l++){
-                        printf("%-20f ", (double) *(float *)((char *) tensor->data + i*tensor->nb[0] + j*tensor->nb[1] + k*tensor->nb[2] + l*tensor->nb[3]));
+
+    // For 4D tensor
+    else if(tensor->n_dims == 4) {
+        for(int batch = 0; batch < tensor->ne[0] && batch < MAX_ELEMENTS_BATCH; batch++){
+            printf("Batch %d\n", batch+1);
+            for(int i = 0; i < tensor->ne[1] && i < MAX_ELEMENTS_ROW; i++){
+                printf("| Row %d: ", i+1);
+                for(int j = 0; j < tensor->ne[2] && j < MAX_ELEMENTS_COL; j++){
+                    printf("[");
+                    for(int k = 0; k < tensor->ne[3] && k < MAX_ELEMENTS_LAYER; k++){
+                        printf("%-7.3f",  *(double *)((char *) tensor->data + batch*tensor->nb[0] + i*tensor->nb[1] + j*tensor->nb[2] + k*tensor->nb[3]));
+                        if(k < tensor->ne[3] - 1 && k < MAX_ELEMENTS_LAYER - 1) 
+                            printf(", ");
                     }
-                    printf("|\n");
+                    if(MAX_ELEMENTS_LAYER < tensor->ne[3]) printf(", ..");
+                    printf("] ");
                 }
-                printf("%s\n",  sep);
+                printf("\n");
             }
+            if(MAX_ELEMENTS_BATCH < tensor->ne[0]) printf("     ... additional batches\n");
+            printf("%s", sep);
         }
     }
 }
@@ -19614,11 +19656,13 @@ void ggml_tensor_printf(const struct ggml_tensor *tensor, char *prefix, int line
         // nb[i] = nb[i-1] * ne[i-1]
     */
     {
-        pos = 0;
-        for (int i = 0; i <= tensor->n_dims; i++) {
-            pos += snprintf(strides + pos, sizeof(strides) - pos, "%" PRId64, tensor->nb[i]);
+        strides[0] = '\0';
+        for (int i = 0; i < tensor->n_dims; i++) {
+            char dim_str[20];
+            snprintf(dim_str, sizeof(dim_str), "%" PRId64, tensor->nb[i]);
+            strncat(strides, dim_str, sizeof(strides) - strlen(strides) - 1);
             if (i != tensor->n_dims - 1) {
-                pos += snprintf(strides + pos, sizeof(strides) - pos, "x");
+                strncat(strides, "x", sizeof(strides) - strlen(strides) - 1);
             }
         }
     }

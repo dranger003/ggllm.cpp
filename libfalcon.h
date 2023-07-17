@@ -76,6 +76,20 @@ extern "C" {
 
     typedef void (*falcon_progress_callback)(float progress, void *ctx, const char *status);
 
+    struct falcon_evaluation_config {
+        // mandatory configuration
+        int n_tokens = 1;       // number of tokens to process
+        int n_past = 0;         // number of tokens in kv cache past
+        int n_threads = 1;      // number of threads available
+
+        // optional
+        const char *cgraph_fname = nullptr; // path to the cgraph export file
+        int n_max_real_ctx = 0; // the actual max achievable context given all parameters (-c, -n, -enc, -sys)
+
+        // debug related
+        int debug_timings = 0;  // 0 (none), 1(first token), 2(first,last), 3(every token)
+    };
+
     struct falcon_context_params {
         int n_ctx;                             // text context
         int n_batch;                           // prompt processing batch size
@@ -206,10 +220,7 @@ extern "C" {
     LLAMA_API int falcon_eval(
             struct falcon_context * ctx,
                const falcon_token * tokens,
-                             int   n_tokens,
-                             int   n_past,
-                             int   n_threads, 
-                             int debug_timings);
+                             falcon_evaluation_config & configuration);
 
     // Export a static computation graph for context of 511 and batch size of 1
     // NOTE: since this functionality is mostly for debugging and demonstration purposes, we hardcode these
@@ -257,8 +268,8 @@ extern "C" {
 
     // Token Id -> String. Uses the vocabulary in the provided context
     LLAMA_API const char * falcon_token_to_str(const struct falcon_context * ctx, falcon_token token);
-    typedef enum { FINETUNE_UNSPECIFIED, FINETUNE_NONE, FINETUNE_ALPACA, FINETUNE_OPENASSISTANT, FINETUNE_WIZARD, FINETUNE_FALCONINSTRUCT } t_finetune_type;
-    static const char *FINETUNE_NAME[6] = { "UNSPECIFIED", "NONE", "ALPACA", "OPENASSISTANT", "WIZARD", "FALCONINSTRUCT" };
+    typedef enum { FINETUNE_UNSPECIFIED, FINETUNE_NONE, FINETUNE_ALPACA, FINETUNE_OPENASSISTANT, FINETUNE_OPENASSIST_V1, FINETUNE_WIZARD, FINETUNE_FALCONINSTRUCT } t_finetune_type;
+    static const char *FINETUNE_NAME[7] = { "UNSPECIFIED", "NONE", "ALPACA", "OPENASSISTANT", "OPENASSIST_V1", "WIZARD", "FALCONINSTRUCT" };
 
     
 
@@ -322,11 +333,6 @@ extern "C" {
 
     // Print system information
     LLAMA_API const char * falcon_print_system_info(int n_threads, int n_cores);
-
-    LLAMA_API const GPUStatus* falcon_cuda_get_system_gpu_status();
-    LLAMA_API void falcon_cuda_print_gpu_status(const GPUStatus* status, bool print_summary);
-    LLAMA_API void falcon_cuda_set_max_gpus();
-    LLAMA_API void falcon_cuda_set_main_device();
 
 #ifdef __cplusplus
 }

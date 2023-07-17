@@ -1948,23 +1948,23 @@ void ggml_cuda_print_gpu_status(const GPUStatus *status, bool print_summary) {
         return;
     }
 
-    const char *divider = "+----+-----------------------------------------+------------+-----------+-----------+-----------+-----------+";
+    const char *divider = "+----+------------------------------------+------------+-----------+-----------+-----------+-----------+";
     fprintf(stderr,"%s\n", divider);
-    fprintf(stderr,"| ID | %-30s %2d found | %10s | %9s | %9s | %9s | %9s |\n", "Device", status->num_devices, "VRAM Total", "VRAM Free", "VRAM Used","Split at ", "Device");
+    fprintf(stderr,"| ID | %-25s %2d found | %10s | %9s | %9s | %9s | %9s |\n", "Device", status->num_devices, "VRAM Total", "VRAM Free", "VRAM Used","Split at ", "Device");
     fprintf(stderr,"%s\n", divider);
 
     for (int i = 0; i < status->num_devices; ++i) {
         const struct cudaDeviceProp *prop = &status->device_props[i];
         size_t vram_used = status->device_vram_total[i] - status->device_vram_free[i];
         float split_at_percentage = g_tensor_split[i] * 100;
-        fprintf(stderr,"| %2d | %-39s | %7zu MB | %6zu MB | %6zu MB | %8.1f%% | %9s |\n", 
+        fprintf(stderr,"| %2d | %-34s | %7zu MB | %6zu MB | %6zu MB | %8.1f%% | %9s |\n", 
                 i,prop->name, status->device_vram_total[i] / (1024 * 1024), status->device_vram_free[i] / (1024 * 1024), vram_used / (1024 * 1024),split_at_percentage, (i == status->main_device_id) ? "Primary" : "Secondary");
         // printf("%s\n", divider);
     }
     if (print_summary && status->num_devices > 1)
     {
         fprintf(stderr,"%s\n", divider);
-        fprintf(stderr,"|    | %-39s | %7zu MB | %6zu MB | %6zu MB | %9s | %9s |\n", 
+        fprintf(stderr,"|    | %-34s | %7zu MB | %6zu MB | %6zu MB | %9s | %9s |\n", 
             "Device summary", status->total_vram / (1024 * 1024), status->total_free_vram / (1024 * 1024), (status->total_vram - status->total_free_vram) / (1024 * 1024), "N/A", "All");
     }
     fprintf(stderr,"%s\n", divider);

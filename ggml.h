@@ -397,7 +397,9 @@ extern "C" {
                 float f_custom[4];  
                 int i_custom[4];
 
-                // uint8_t padding;
+                uint8_t debug_flag;
+
+                char padding[15];
         } tensor_meta;
         static const tensor_meta GGML_DEFAULT_TENSOR_META = {
                 /*.layer_id =*/ -1,
@@ -410,8 +412,10 @@ extern "C" {
                 /*.f_custom =*/ {0.0f, 0.0f, 0.0f, 0.0f},
                 /*.i_custom =*/ {0, 0, 0, 0},
 
+                /*.debug_flag =*/ 0,
 
-                // /*.padding =*/ 0,
+
+                /*.padding =*/ {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
         };
     // n-dimensional tensor
     struct ggml_tensor {
@@ -1556,8 +1560,11 @@ extern "C" {
     //
     // custom optional parameters in meta struct
     //
-    #define GGML_CUSTOM_F_ROPE_ANG_SCALE 0 // theta pre scale
-    #define GGML_CUSTOM_I_ROPE_ANG_FREQ 0 // frequency base for rotation in hz
+    // -- ROPE --
+    #define GGML_CUSTOM_F_ROPE_ANG_SCALE 0 // theta pre scale (basically scales n_past linearly)
+    #define GGML_CUSTOM_F_ROPE_NTK_ALPHA 1 // 4/8; theta base freq alpha scale (NTK fourier space) - best in combination with DYNAMIC_MODE = 1
+    #define GGML_CUSTOM_I_ROPE_ANG_FREQ 0 // base freq (GPT default is 10000)
+    #define GGML_CUSTOM_I_ROPE_DYNAMIC_MODE 1 // 1 = dynamic scaling based on given n_ctx and optional NTK_ALPHA using the research of u/emozilla and u/bloc97 of adaptive fourier space scaling of the rotation
     // #define GGML_CUSTOM_I_ROPE_ANG_PHASE_N 1 // phase offset for rotation in number of tokens from default
 
 
